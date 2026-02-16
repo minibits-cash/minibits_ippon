@@ -1,0 +1,44 @@
+{
+  "name": "minibits_ippon",
+  "type": "module",
+  "version": "0.0.1",
+  "license": "MIT",
+  "scripts": {
+    "start:dev": "ts-node-dev --respawn --pretty --transpile-only --project tsconfig.json src/index.ts",
+    "build": "tsc --project tsconfig.json --noEmit && esbuild src/index.ts --bundle --platform=node --target=es2022 --format=esm --outdir=dist --packages=external --sourcemap",
+    "start:prod": "node dist/index.js",
+    "prisma:updateTypes": "npx prisma generate",
+    "prisma:updateDb": "npx prisma db push"
+  },
+  "dependencies": {
+    "@cashu/cashu-ts": "3.4.1",
+    "@fastify/bearer-auth": "^10.1.1",
+    "@fastify/rate-limit": "^10.3.0",
+    "@gandlaf21/bolt11-decode": "^3.1.1",
+    "@noble/hashes": "^2.0.1",
+    "@prisma/client": "^6.13.0",
+    "abort-controller": "^3.0.0",
+    "date-fns": "^4.1.0",
+    "dotenv": "^17.2.1",
+    "fastify": "^5.4.0",
+    "nostr-tools": "2.19.4",
+    "pg": "^8.16.3",
+    "pg-listen": "^1.7.0",
+    "react-native-logs": "^5.3.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/eventsource": "^1.1.15",
+    "@types/node": "18.17.1",
+    "@types/pg": "^8.15.5",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.27.2",
+    "prisma": "^6.13.0",
+    "ts-node": "10.9.1",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "5.1.6"
+  },
+  "engines": {
+    "node": "^24"
+  }
+}

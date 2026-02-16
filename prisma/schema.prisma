@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Wallet {
+  id              Int       @id @default(autoincrement())
+  accessKey       String    @unique
+  name            String?
+  mint            String
+  unit            String    @default("sat")
+  maxBalance      Int?
+  maxSend         Int?
+  maxPay          Int?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime?
+  proofs          Proof[]
+}
+
+enum ProofStatus {
+  UNSPENT
+  PENDING
+  SPENT
+}
+
+model Proof {
+  id        Int         @id @default(autoincrement())
+  walletId  Int
+  wallet    Wallet      @relation(fields: [walletId], references: [id])
+  proofId   String
+  amount    Int
+  secret    String      @unique
+  C         String
+  dleq      String?
+  witness   String?
+  status    ProofStatus @default(UNSPENT)
+  createdAt DateTime    @default(now())
+}
