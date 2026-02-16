@@ -465,8 +465,66 @@ interface RateResponse {
 
 ## Development
 
-Wallet is developed in Typescript and runs on Node.js using pm2 process manager. 
-It uses Prisma ORM to communicate with the Postgres database and Fastify as a HTTP server.
+Minibits Ippon is written in TypeScript and runs on Node.js (v24+). It uses Fastify as the HTTP server, Prisma ORM for PostgreSQL, and pm2 as the process manager.
+
+### Prerequisites
+
+- Node.js v24+
+- PostgreSQL
+- A running Cashu mint (e.g. [Nutshell](https://github.com/cashubtc/nutshell) or [Moksha](https://github.com/ngutech21/moksha))
+
+### Setup
+
+```bash
+# Install dependencies
+yarn install
+
+# Copy and configure environment
+cp .env.example .env
+# Edit .env — set DATABASE_URL, MINT_URL, UNIT, limits, etc.
+
+# Create database and apply schema
+npx prisma migrate dev --name init
+
+# Generate Prisma client
+npx prisma generate
+```
+
+### Running
+
+```bash
+# Development (auto-reload)
+yarn start:dev
+
+# Production build
+yarn build
+
+# Production start
+yarn start:prod
+
+# With pm2
+pm2 start ecosystem.config.js
+```
+
+### Environment variables
+
+| Variable | Description | Default |
+|---|---|---|
+| `DATABASE_URL` | PostgreSQL connection string | — |
+| `PORT` | HTTP server port | `3001` |
+| `LOG_LEVEL` | Log verbosity (`trace`, `debug`, `info`, `warn`, `error`) | `debug` |
+| `MINT_URL` | Cashu mint URL | — |
+| `UNIT` | Wallet unit (`sat` or `msat`) | `sat` |
+| `MAX_BALANCE` | Global max wallet balance (in unit) | `100000` |
+| `MAX_SEND` | Global max ecash send amount | `50000` |
+| `MAX_PAY` | Global max Lightning payment amount | `50000` |
+| `SERVICE_STATUS` | Status string returned by `/v1/info` | `operational` |
+| `SERVICE_HELP` | Help URL returned by `/v1/info` | — |
+| `SERVICE_TERMS` | Terms URL returned by `/v1/info` | — |
+
+### MCP server
+
+The companion [minibits_ippon_mcp](https://github.com/minibits-cash/minibits_ippon_mcp) project provides an MCP server that wraps the wallet API for AI agent integration. It manages session lifecycle and safeguards the wallet access key so that agents never handle it directly.
 
 ## TO-DO's
 
