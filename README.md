@@ -465,7 +465,7 @@ interface RateResponse {
 
 ## Development
 
-Minibits Ippon is written in TypeScript and runs on Node.js (v24+). It uses Fastify as the HTTP server, Prisma ORM for PostgreSQL, and pm2 as the process manager.
+Minibits Ippon is written in TypeScript and runs on Node.js (v24+). It uses Fastify as the HTTP server, and Prisma ORM for PostgreSQL.
 
 ### Prerequisites
 
@@ -501,9 +501,6 @@ yarn build
 
 # Production start
 yarn start:prod
-
-# With pm2
-pm2 start ecosystem.config.js
 ```
 
 ### Environment variables
