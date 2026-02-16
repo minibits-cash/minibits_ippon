@@ -470,7 +470,7 @@ It uses Prisma ORM to communicate with the Postgres database and Fastify as a HT
 
 ## TO-DO's
 
-[] lock token to pubkey
-[] pay cashu payment request
-[] add transactions model and API
+- [ ] lock token to pubkey
+- [ ] pay cashu payment request
+- [ ] add transactions model and API
 
