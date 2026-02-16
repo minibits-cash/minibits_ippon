@@ -1,7 +1,5 @@
 # Minibits Ippon
 
-Repository: minibits-cash/minibits_ippon
-
 Ippon (一本, "one point", "decisive victory")
 
 Minibits Ippon is a minimalistic, API-driven ecash and Lightning wallet implementing the Cashu protocol.
@@ -36,10 +34,6 @@ Due to the above constraints, the primary safeguard is a combination of rate lim
     
 -   Optional per-wallet balance and payment limits defined at wallet creation time. This prevents funding or outgoing payments from exceeding intended task scope.
     
-    
-## Wallet API
-
-The API is versioned under /v1/ and uses standard HTTP methods with JSON payloads. All authenticated endpoints require a Bearer access_key in the Authorization header (except wallet creation and public info).
 
 ## Wallet API
 
@@ -226,8 +220,6 @@ curl -X GET http://localhost:3000/v1/rate/USD \
   -H "Authorization: Bearer abc123_access_key"
 ```
 
-TO-DO: add transactions model and API
-
 ## Type Definitions
 
 All types are in TypeScript notation for clarity. Despite wallet operates only with a single unit, amounts are always declared together with unit to keep the amount unambiguous (i.e., unit should always equal wallet's `MintUnit`).  
@@ -235,21 +227,21 @@ All types are in TypeScript notation for clarity. Despite wallet operates only w
 ### Enums
 ```ts
 
-type MintUnit = "msat" | "sat";
+  type MintUnit = "msat" | "sat";
 
-type MintMethod = "BOLT11";
+  type MintMethod = "BOLT11";
 
-type WalletTokenState = "UNSPENT" | "PENDING" | "SPENT" | "MIXED" | "UNKNOWN";
+  type WalletTokenState = "UNSPENT" | "PENDING" | "SPENT" | "MIXED" | "UNKNOWN";
 
-type EncodedType =
+  type EncodedType =
 
-| "BOLT11_REQUEST"
+  | "BOLT11_REQUEST"
 
-| "CASHU_TOKEN_V4"
+  | "CASHU_TOKEN_V4"
 
-| "CASHU_TOKEN_V3"
+  | "CASHU_TOKEN_V3"
 
-| "CASHU_REQUEST";
+  | "CASHU_REQUEST";
 ```
 
 ### Core types
@@ -258,51 +250,51 @@ type EncodedType =
 
 interface WalletInfo {
 
-status: string; // e.g., "operational"
+  status: string; // e.g., "operational"
 
-help: string; // Optional help text or link
+  help: string; // Optional help text or link
 
-terms: string; // Terms of service or link
+  terms: string; // Terms of service or link
 
-unit: MintUnit; // Supported unit (single-unit wallet)
+  unit: MintUnit; // Supported unit (single-unit wallet)
 
-mint: string; // Mint URL
+  mint: string; // Mint URL
 
-limits: {
+  limits: {
 
-max_balance: number;
+    max_balance: number;
 
-max_send: number;
+    max_send: number;
 
-max_pay: number;
+    max_pay: number;
 
-};
+  };
 }
 
 
 interface Wallet {
 
-name: string; // Optional wallet name/label
+  name: string; // Optional wallet name/label
 
-access_key: string; // Bearer token for this wallet
+  access_key: string; // Bearer token for this wallet
 
-mint: string; // Mint URL
+  mint: string; // Mint URL
 
-unit: MintUnit;
+  unit: MintUnit;
 
-balance: number; // Confirmed / unspent balance
+  balance: number; // Confirmed / unspent balance
 
-pending_balance: number; // Pending (e.g., exported tokens not yet spent)
+  pending_balance: number; // Pending (e.g., exported tokens not yet spent)
 
-limits?: { // Per-wallet overrides (optional)
+  limits?: { // Per-wallet overrides (optional)
 
-max_balance: number;
+    max_balance: number;
 
-max_send: number;
+    max_send: number;
 
-max_pay: number;
+    max_pay: number;
 
-};
+  };
 }
 
 ```
@@ -315,9 +307,9 @@ max_pay: number;
 
 interface WalletRequest {
 
-name?: string; // Optional name for the wallet
+  name?: string; // Optional name for the wallet
 
-token?: string; // Optional initial Cashu token to deposit on creation
+  token?: string; // Optional initial Cashu token to deposit on creation
 
 }
 
@@ -325,11 +317,7 @@ token?: string; // Optional initial Cashu token to deposit on creation
 
 interface WalletDepositRequest {
 
-// Mirrors MintQuoteBolt11Request from cashu-ts
-
-// Typically: { amount: number, unit: MintUnit, ... }
-
-// Full structure depends on cashu-ts version; see library docs
+  // Mirrors MintQuoteBolt11Request from cashu-ts
 
 }
 
@@ -337,11 +325,7 @@ interface WalletDepositRequest {
 
 interface WalletDepositResponse {
 
-// Mirrors MintQuoteBolt11Response from cashu-ts
-
-// Typically: { quote: string, request: string, ... }
-
-// Full structure depends on cashu-ts version
+  // Mirrors MintQuoteBolt11Response from cashu-ts
 
 }
 
@@ -349,15 +333,15 @@ interface WalletDepositResponse {
 
 interface WalletSendRequest {
 
-amount: number;
+  amount: number;
 
-unit: MintUnit;
+  unit: MintUnit;
 
-cashu_request?: string; // Optional Cashu payment request to pay
+  cashu_request?: string; // Optional Cashu payment request to pay // NOT YET IMPLEMENTED
 
-memo?: string;
+  memo?: string;
 
-lock_to_pubkey?: string; // Optional pubkey lock for P2PK
+  lock_to_pubkey?: string; // Optional pubkey lock for P2PK // NOT YET IMPLEMENTED
 
 }
 
@@ -365,13 +349,13 @@ lock_to_pubkey?: string; // Optional pubkey lock for P2PK
 
 interface WalletSendResponse {
 
-token: string; // Encoded Cashu token (v3 or v4)
+  token: string; // Encoded Cashu token (v3 or v4)
 
-amount: number;
+  amount: number;
 
-unit: MintUnit;
+  unit: MintUnit;
 
-memo?: string;
+  memo?: string;
 
 }
 
@@ -379,7 +363,7 @@ memo?: string;
 
 interface WalletCheckRequest {
 
-token: string; // Encoded token to check
+  token: string; // Encoded token to check
 
 }
 
@@ -387,15 +371,15 @@ token: string; // Encoded token to check
 
 interface WalletCheckResponse {
 
-amount: number;
+  amount: number;
 
-unit: MintUnit;
+  unit: MintUnit;
 
-memo?: string;
+  memo?: string;
 
-state: WalletTokenState;
+  state: WalletTokenState;
 
-mint_proof_states: ProofState[]; // From cashu-ts (e.g., "UNSPENT", "SPENT")
+  mint_proof_states: ProofState[]; // From cashu-ts (e.g., "UNSPENT", "SPENT")
 
 }
 
@@ -405,9 +389,9 @@ mint_proof_states: ProofState[]; // From cashu-ts (e.g., "UNSPENT", "SPENT")
 
 interface WalletDecodeRequest {
 
-type: EncodedType;
+  type: EncodedType;
 
-data: string; // Encoded string (token, invoice, request)
+  data: string; // Encoded string (token, invoice, request)
 
 }
 
@@ -415,9 +399,9 @@ data: string; // Encoded string (token, invoice, request)
 
 interface WalletDecodeResponse {
 
-type: EncodedType;
+  type: EncodedType;
 
-decoded: any; // Decoded payload (structure varies by type)
+  decoded: any; // Decoded payload (structure varies by type)
 
 }
 
@@ -425,13 +409,13 @@ decoded: any; // Decoded payload (structure varies by type)
 
 interface WalletPayRequest {
 
-lightning_address?: string; // LNURL-pay / Lightning address
+  lightning_address?: string; // LNURL-pay / Lightning address
 
-bolt11_request?: string; // BOLT11 invoice
+  bolt11_request?: string; // BOLT11 invoice
 
-amount: number;
+  amount: number;
 
-unit: MintUnit;
+  unit: MintUnit;
 
 }
 
@@ -439,11 +423,7 @@ unit: MintUnit;
 
 interface WalletPayResponse {
 
-// Mirrors MeltQuoteBolt11Response from cashu-ts
-
-// Typically includes quote, fee_reserve, etc.
-
-// Full structure depends on cashu-ts version
+  // Mirrors MeltQuoteBolt11Response from cashu-ts
 
 }
 
@@ -451,7 +431,7 @@ interface WalletPayResponse {
 
 interface WalletReceiveRequest {
 
-token: string; // Encoded Cashu token to receive/swap
+  token: string; // Encoded Cashu token to receive/swap
 
 }
 
@@ -459,13 +439,13 @@ token: string; // Encoded Cashu token to receive/swap
 
 interface WalletReceiveResponse {
 
-amount: number;
+  amount: number;
 
-unit: MintUnit;
+  unit: MintUnit;
 
-balance: number; // New total confirmed balance
+  balance: number; // New total confirmed balance
 
-pending_balance: number; // Updated pending
+  pending_balance: number; // Updated pending
 
 }
 
@@ -473,11 +453,11 @@ pending_balance: number; // Updated pending
 
 interface RateResponse {
 
-currency: string; // e.g., "USD", "EUR"
+  currency: string; // e.g., "USD", "EUR"
 
-rate: number; // sat / unit per fiat currency
+  rate: number; // sat / unit per fiat currency
 
-timestamp: number; // UNIX timestamp
+  timestamp: number; // UNIX timestamp
 
 }
   
@@ -487,4 +467,10 @@ timestamp: number; // UNIX timestamp
 
 Wallet is developed in Typescript and runs on Node.js using pm2 process manager. 
 It uses Prisma ORM to communicate with the Postgres database and Fastify as a HTTP server.
+
+## TO-DO's
+
+[] lock token to pubkey
+[] pay cashu payment request
+[] add transactions model and API
 
