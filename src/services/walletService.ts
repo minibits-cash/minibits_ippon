@@ -27,7 +27,11 @@ const getWallet = async function (): Promise<Wallet> {
         throw new AppError(500, Err.VALIDATION_ERROR, 'Missing MINT_URL environment variable', { caller: 'getWallet' })
     }
 
-    const unit = process.env.UNIT || 'sat'
+    if (!process.env.UNIT) {
+        throw new AppError(500, Err.VALIDATION_ERROR, 'Missing UNIT environment variable', { caller: 'getWallet' })
+    }
+
+    const unit = process.env.UNIT
 
     log.debug('[getWallet] Creating new wallet instance', { mintUrl: process.env.MINT_URL, unit })
 
