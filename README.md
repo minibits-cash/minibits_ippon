@@ -542,6 +542,9 @@ All external I/O (Prisma, cashu-ts `Wallet`, `getEncodedTokenV4`, fetch) is mock
 | `SERVICE_STATUS` | Status string returned by `/v1/info` | `operational` |
 | `SERVICE_HELP` | Help URL returned by `/v1/info` | — |
 | `SERVICE_TERMS` | Terms URL returned by `/v1/info` | — |
+| `RATE_LIMIT_MAX` | Default max requests per window (global) | `100` |
+| `RATE_LIMIT_CREATE_WALLET_MAX` | Max wallet creations per window per IP | `3` |
+| `RATE_LIMIT_WINDOW` | Rate-limit time window | `1 minute` |
 
 ### MCP server
 

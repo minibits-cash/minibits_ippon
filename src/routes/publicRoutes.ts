@@ -42,8 +42,8 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
     instance.post('/wallet', {
         config: {
             rateLimit: {
-                max: 3,
-                timeWindow: '1 minute',
+                max: parseInt(process.env.RATE_LIMIT_CREATE_WALLET_MAX || '3'),
+                timeWindow: process.env.RATE_LIMIT_WINDOW || '1 minute',
             },
         },
     }, async (req: CreateWalletRequest, res: FastifyReply) => {

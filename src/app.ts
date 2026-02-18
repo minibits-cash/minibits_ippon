@@ -31,8 +31,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await app.register(import('@fastify/rate-limit'), {
         global: false,
-        max: 100,
-        timeWindow: '1 minute',
+        max: parseInt(process.env.RATE_LIMIT_MAX || '100'),
+        timeWindow: process.env.RATE_LIMIT_WINDOW || '1 minute',
     })
 
     app.register(publicRoutes, { prefix: '/v1' })
