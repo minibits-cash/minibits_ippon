@@ -5,7 +5,7 @@ Ippon (一本, "one point", "decisive victory")
 Minibits Ippon is a minimalistic, API-driven ecash and Lightning wallet implementing the Cashu protocol.
 
 > ### Try it out
-> A live Ippon instance is running at **[ippon.minibits.cash]**:
+> A live Ippon instance is running at **ippon.minibits.cash**:
 >
 > - [Swagger UI](https://ippon.minibits.cash/v1/) — API explorer (`GET /v1/`)
 > - [OpenAPI 3.0 JSON](https://ippon.minibits.cash/v1/json) — raw spec (`GET /v1/json`)
