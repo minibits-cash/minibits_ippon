@@ -115,6 +115,9 @@ curl -X GET http://localhost:3000/v1/wallet/deposit/quote_abc123xyz \
 ### POST /v1/wallet/send
 
 Generates and exports an ecash token for a specific amount (or pays a Cashu payment request if provided). The wallet handles any necessary swaps and marks proofs as pending to prevent double-spending.
+Potential mint fees are fully paid by the sender (including fees paid by the
+receiver when swapping the received token for fresh one).
+Optionally allows locking the token to a specific receiver's pubkey to prevent unauthorized party to steal it.
 
 | Authorization          | Request Type      | Response Type       |
 |------------------------|-------------------|---------------------|
@@ -471,7 +474,7 @@ Minibits Ippon is written in TypeScript and runs on Node.js (v24+). It uses Fast
 
 - Node.js v24+
 - PostgreSQL
-- A running Cashu mint (e.g. [Nutshell](https://github.com/cashubtc/nutshell) or [Moksha](https://github.com/ngutech21/moksha))
+- A running Cashu mint (e.g. [Nutshell](https://github.com/cashubtc/nutshell) or [cdk-mintd](https://github.com/cashubtc/cdk/tree/main/crates/cdk-mintd))
 
 ### Setup
 

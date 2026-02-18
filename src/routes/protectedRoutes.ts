@@ -13,6 +13,7 @@ import { decode as bolt11Decode } from '@gandlaf21/bolt11-decode'
 import { bearerAuthHandler } from '../handlers/bearerAuth'
 import { log } from '../services/logService'
 import { WalletService } from '../services/walletService'
+import { NostrService } from '../services/nostrService'
 import { getExchangeRate, isSupportedCurrency } from '../services/exchangeRateService'
 import AppError, { Err } from '../utils/AppError'
 
@@ -167,9 +168,13 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
 
     instance.post('/wallet/send', async (req: SendRequest, res: FastifyReply) => {
         const wallet = getAuthWallet(req)
-        const { amount, unit, memo, lock_to_pubkey } = req.body
+        const { amount, unit, memo, lock_to_pubkey, cashu_request } = req.body
 
         validateUnit(wallet, unit, 'Send', req.id)
+
+        if (cashu_request) {
+            throw new AppError(400, Err.VALIDATION_ERROR, 'Paying of cashu payment requests is not yet supported.', { caller: 'Send', reqId: req.id })
+        }
 
         if (!amount || amount <= 0) {
             throw new AppError(400, Err.VALIDATION_ERROR, 'Amount must be a positive integer', { caller: 'Send', reqId: req.id })
@@ -180,7 +185,12 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
             throw new AppError(400, Err.LIMIT_ERROR, `Amount ${amount} exceeds max send limit of ${maxSend}`, { caller: 'Send', reqId: req.id })
         }
 
-        const { send } = await WalletService.sendProofs(wallet.id, amount)
+        let p2pkPubkey: string | undefined
+        if (lock_to_pubkey) {
+            p2pkPubkey = NostrService.normalizePubkey(lock_to_pubkey)
+        }
+
+        const { send } = await WalletService.sendProofs(wallet.id, amount, p2pkPubkey)
         const mintUrl = process.env.MINT_URL || ''
 
         const token = getEncodedTokenV4({

@@ -8,6 +8,7 @@ import {
     MeltQuoteState,
     CheckStateEnum,
     MintOperationError,
+    OutputConfig,
     getDecodedToken,
 } from '@cashu/cashu-ts'
 import { ProofStatus } from '@prisma/client'
@@ -147,7 +148,7 @@ const mintProofs = async function (amount: number, quoteId: string): Promise<Pro
 }
 
 
-const sendProofs = async function (walletId: number, amount: number): Promise<{ keep: Proof[], send: Proof[] }> {
+const sendProofs = async function (walletId: number, amount: number, p2pkPubkey?: string): Promise<{ keep: Proof[], send: Proof[] }> {
     const wallet = await getWallet()
     const proofs = await loadProofs(walletId)
     const totalBalance = getProofsAmount(proofs)
@@ -156,7 +157,13 @@ const sendProofs = async function (walletId: number, amount: number): Promise<{ 
         throw new AppError(400, Err.VALIDATION_ERROR, `Insufficient balance: ${totalBalance} < ${amount}`, { caller: 'sendProofs' })
     }
 
-    const { keep, send } = await wallet.send(amount, proofs, { includeFees: true })
+    const outputConfig: OutputConfig | undefined = p2pkPubkey
+        ? { send: { type: 'p2pk', options: { pubkey: p2pkPubkey } } }
+        : undefined
+
+    // Sender pays all fees - we include fees that the receiver will need to pay when claiming the proofs,
+    // to make sure he receives the full intended amount    
+    const { keep, send } = await wallet.send(amount, proofs, { includeFees: true }, outputConfig)
 
     // Determine which input proofs were consumed by the swap vs returned as-is
     const returnedSecrets = new Set([
