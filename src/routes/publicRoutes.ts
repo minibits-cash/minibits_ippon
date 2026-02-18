@@ -9,9 +9,12 @@ import AppError, { Err } from '../utils/AppError'
 const limitsSchema = {
     type: 'object',
     properties: {
-        max_balance: { type: 'integer' },
-        max_send:    { type: 'integer' },
-        max_pay:     { type: 'integer' },
+        max_balance:                  { type: 'integer' },
+        max_send:                     { type: 'integer' },
+        max_pay:                      { type: 'integer' },
+        rate_limit_max:               { type: 'integer', description: 'Max requests per time window (global)' },
+        rate_limit_create_wallet_max: { type: 'integer', description: 'Max wallet creations per time window per IP' },
+        rate_limit_window:            { type: 'string',  description: 'Rate-limit time window (e.g. "1 minute")' },
     },
 }
 
@@ -47,9 +50,12 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
             unit,
             mint: mintUrl,
             limits: {
-                max_balance: parseInt(process.env.MAX_BALANCE || '100000'),
-                max_send: parseInt(process.env.MAX_SEND || '50000'),
-                max_pay: parseInt(process.env.MAX_PAY || '50000'),
+                max_balance:                  parseInt(process.env.MAX_BALANCE || '100000'),
+                max_send:                     parseInt(process.env.MAX_SEND || '50000'),
+                max_pay:                      parseInt(process.env.MAX_PAY || '50000'),
+                rate_limit_max:               parseInt(process.env.RATE_LIMIT_MAX || '100'),
+                rate_limit_create_wallet_max: parseInt(process.env.RATE_LIMIT_CREATE_WALLET_MAX || '3'),
+                rate_limit_window:            process.env.RATE_LIMIT_WINDOW || '1 minute',
             },
         }
 
