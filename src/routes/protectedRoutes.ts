@@ -456,14 +456,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
         switch (type) {
             case 'CASHU_TOKEN_V4':
             case 'CASHU_TOKEN_V3': {
-                const token = getDecodedToken(data)
-                decoded = {
-                    mint: token.mint,
-                    unit: token.unit,
-                    memo: token.memo,
-                    amount: WalletService.getProofsAmount(token.proofs),
-                    proofs_count: token.proofs.length,
-                }
+                decoded = getDecodedToken(data)
                 break
             }
 
