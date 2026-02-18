@@ -61,7 +61,7 @@ Returns machine-readable information about the wallet service, including status,
 
 **Example:**
 ```bash
-curl -X GET http://localhost:3000/v1/info
+curl -X GET http://localhost:3001/v1/info
  ```
 
 ### POST /v1/wallet
@@ -74,7 +74,7 @@ Creates a new short-lived wallet. Optionally accepts an initial Cashu token to f
 
 **Example:**
 ```bash
-curl -X POST http://localhost:3000/v1/wallet \
+curl -X POST http://localhost:3001/v1/wallet \
   -H "Content-Type: application/json" \
   -d '{"name": "agent-007-session-001", "token": "cashuBeyJ..."}'
 ```
@@ -89,7 +89,7 @@ Retrieves details of the current wallet, including its name, unit, mint, confirm
 
 **Example:**
 ```bash
-curl -X GET http://localhost:3000/v1/wallet \
+curl -X GET http://localhost:3001/v1/wallet \
   -H "Authorization: Bearer abc123_access_key"
 ```
 
@@ -103,7 +103,7 @@ Requests a Lightning invoice for funding the wallet with a specified amount. The
 
 **Example:**
 ```bash
-curl -X POST http://localhost:3000/v1/wallet/deposit \
+curl -X POST http://localhost:3001/v1/wallet/deposit \
   -H "Authorization: Bearer abc123_access_key" \
   -H "Content-Type: application/json" \
   -d '{"amount": 10000, "unit": "msat"}'
@@ -119,7 +119,7 @@ Checks the status of a previously requested deposit quote (e.g., whether the inv
 
 **Example:**
 ```bash
-curl -X GET http://localhost:3000/v1/wallet/deposit/quote_abc123xyz \
+curl -X GET http://localhost:3001/v1/wallet/deposit/quote_abc123xyz \
   -H "Authorization: Bearer abc123_access_key"
  ```
 
@@ -136,7 +136,7 @@ Optionally allows locking the token to a specific receiver's pubkey to prevent u
 
 **Example:**
 ```bash
-curl -X POST http://localhost:3000/v1/wallet/send \
+curl -X POST http://localhost:3001/v1/wallet/send \
   -H "Authorization: Bearer abc123_access_key" \
   -H "Content-Type: application/json" \
   -d '{"amount": 5000, "unit": "msat", "memo": "Complete this task for me"}'
@@ -152,7 +152,7 @@ Checks the current state of an exported Cashu token (e.g., whether it has been s
 
 **Example:**
 ```bash
-curl -X POST http://localhost:3000/v1/wallet/check \
+curl -X POST http://localhost:3001/v1/wallet/check \
   -H "Authorization: Bearer abc123_access_key" \
   -H "Content-Type: application/json" \
   -d '{"token": "cashuB..."}'
@@ -168,7 +168,7 @@ Decodes a Cashu token, Cashu payment request, or Lightning invoice and returns s
 
 **Example:**
 ```bash
-curl -X POST http://localhost:3000/v1/wallet/decode \
+curl -X POST http://localhost:3001/v1/wallet/decode \
   -H "Authorization: Bearer abc123_access_key" \
   -H "Content-Type: application/json" \
   -d '{"type": "CASHU_TOKEN_V4", "data": "cashuB..."}'
@@ -184,7 +184,7 @@ Pays an external Lightning invoice (or Lightning address) using the wallet's eca
 
 **Example:**
 ```bash
-curl -X POST http://localhost:3000/v1/wallet/pay \
+curl -X POST http://localhost:3001/v1/wallet/pay \
   -H "Authorization: Bearer abc123_access_key" \
   -H "Content-Type: application/json" \
   -d '{"bolt11_request": "lnbc50u...", "amount": 5000, "unit": "msat"}'
@@ -200,7 +200,7 @@ Checks the status of a melt quote / payment operation (e.g., whether the invoice
 
 **Example:**
 ```bash
-curl -X GET http://localhost:3000/v1/wallet/pay/etkpOx_SLLNEMOX2oEyk6y1ePKVp9sdUxc3k03bI \
+curl -X GET http://localhost:3001/v1/wallet/pay/etkpOx_SLLNEMOX2oEyk6y1ePKVp9sdUxc3k03bI \
   -H "Authorization: Bearer abc123_access_key"
 ```
 
@@ -214,7 +214,7 @@ Imports and processes an external Cashu token. The wallet validates token with t
 
 **Example:**
 ```bash
-curl -X POST http://localhost:3000/v1/wallet/receive \
+curl -X POST http://localhost:3001/v1/wallet/receive \
   -H "Authorization: Bearer abc123_access_key" \
   -H "Content-Type: application/json" \
   -d '{"token": "cashuB..."}'
@@ -230,7 +230,7 @@ Returns the current fiat exchange rate for the wallet's unit (e.g., satoshis per
 
 **Example:**
 ```bash
-curl -X GET http://localhost:3000/v1/rate/USD \
+curl -X GET http://localhost:3001/v1/rate/USD \
   -H "Authorization: Bearer abc123_access_key"
 ```
 
