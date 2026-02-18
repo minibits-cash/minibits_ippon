@@ -7,12 +7,15 @@ Minibits Ippon is a minimalistic, API-driven ecash and Lightning wallet implemen
 > ### Try it out
 > A live Ippon instance is running at **[ippon.minibits.cash](https://ippon.minibits.cash)**:
 >
-> - [Swagger UI](https://ippon.minibits.cash/v1/) — interactive API explorer (`GET /v1/`)
+> - [Swagger UI](https://ippon.minibits.cash/v1/) — API explorer (`GET /v1/`)
 > - [OpenAPI 3.0 JSON](https://ippon.minibits.cash/v1/json) — raw spec (`GET /v1/json`)
+> - [Wallet info](https://ippon.minibits.cash/v1/info) — wallet service info (`GET /v1/info`)
+> - [MCP server](https://ippon.minibits.cash/mcp) — MCP server to make usage by AI agents easier (`GET /v1/info`)
 >
-> ⚠️ **This instance is provided for testing and evaluation purposes only. Use it at your own risk, with small amounts only. Do not store funds you cannot afford to lose.**
+> ⚠️ **This instance is provided for testing and evaluation purposes only. It is an alpha software, use it at your own risk, with small amounts only. Do not store funds you cannot afford to lose.**
 
-It is designed primarily for non-human systems — especially AI agents — that require instant, automated capability to receive and send micropayments without human intervention.
+
+Ippon is designed primarily for non-human systems — especially AI agents — that require instant, automated capability to receive and send micropayments without human intervention.
 
 Minibits Ippon is intended for server-side deployment, ideally by a Cashu mint operator as a complementary service to their mint. It is therefore a fully custodial solution optimized for short-lived, single-purpose wallets with low balances.
 
