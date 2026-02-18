@@ -528,7 +528,7 @@ The companion [minibits_ippon_mcp](https://github.com/minibits-cash/minibits_ipp
 
 ## TO-DO's
 
-- [ ] lock token to pubkey
+- [x] lock token to pubkey
 - [ ] pay cashu payment request
 - [ ] add transactions model and API
 
