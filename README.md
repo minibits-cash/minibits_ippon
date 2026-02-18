@@ -53,7 +53,7 @@ All authenticated endpoints require a `Bearer access_key` in the `Authorization`
 
 ### GET /v1/info
 
-Returns machine-readable information about the wallet service, including status, supported unit, mint URL, and global limits.
+Returns machine-readable information about the wallet service, including status, supported unit, mint URL, and global limits (balance/payment caps and rate limits).
 
 | Authorization | Request Type | Response Type |
 |---------------|--------------|---------------|
@@ -321,9 +321,9 @@ All external I/O (Prisma, cashu-ts `Wallet`, `getEncodedTokenV4`, fetch) is mock
 | `SERVICE_STATUS` | Status string returned by `/v1/info` | `operational` |
 | `SERVICE_HELP` | Help URL returned by `/v1/info` | — |
 | `SERVICE_TERMS` | Terms URL returned by `/v1/info` | — |
-| `RATE_LIMIT_MAX` | Default max requests per window (global) | `100` |
-| `RATE_LIMIT_CREATE_WALLET_MAX` | Max wallet creations per window per IP | `3` |
-| `RATE_LIMIT_WINDOW` | Rate-limit time window | `1 minute` |
+| `RATE_LIMIT_MAX` | Default max requests per window (global); exposed via `GET /v1/info` | `100` |
+| `RATE_LIMIT_CREATE_WALLET_MAX` | Max wallet creations per window per IP; exposed via `GET /v1/info` | `3` |
+| `RATE_LIMIT_WINDOW` | Rate-limit time window; exposed via `GET /v1/info` | `1 minute` |
 
 ### MCP server
 
