@@ -10,7 +10,7 @@ Minibits Ippon is a minimalistic, API-driven ecash and Lightning wallet implemen
 > - [Swagger UI](https://ippon.minibits.cash/v1/) — API explorer (`GET /v1/`)
 > - [OpenAPI 3.0 JSON](https://ippon.minibits.cash/v1/json) — raw spec (`GET /v1/json`)
 > - [Wallet info](https://ippon.minibits.cash/v1/info) — wallet service info (`GET /v1/info`)
-> - [MCP server](https://ippon.minibits.cash/mcp) — MCP server to make usage by AI agents easier (`GET /v1/info`)
+> - [MCP server](https://ippon.minibits.cash/mcp) — MCP server to make usage by AI agents easier (`POST /mcp`)
 >
 > ⚠️ **This instance is provided for testing and evaluation purposes only. It is an alpha software, use it at your own risk, with small amounts only. Do not store funds you cannot afford to lose.**
 
