@@ -344,7 +344,7 @@ interface WalletSendRequest {
 
   memo?: string;
 
-  lock_to_pubkey?: string; // Optional pubkey lock for P2PK // NOT YET IMPLEMENTED
+  lock_to_pubkey?: string; // Optional pubkey lock for P2PK (NUT-11); accepts npub, 64-char x-only hex, or 66-char compressed hex
 
 }
 
@@ -505,6 +505,27 @@ yarn build
 # Production start
 yarn start:prod
 ```
+
+### Testing
+
+The test suite uses [Vitest](https://vitest.dev/) and covers three layers:
+
+| File | Scope |
+|---|---|
+| `src/__tests__/nostrService.test.ts` | Unit — pubkey normalisation (npub / x-only hex / compressed hex) |
+| `src/__tests__/walletService.test.ts` | Unit — `WalletService` methods with Prisma and cashu-ts mocked |
+| `src/__tests__/publicRoutes.test.ts` | Integration — unauthenticated routes (`GET /v1/info`, `POST /v1/wallet`) |
+| `src/__tests__/protectedRoutes.test.ts` | Integration — all authenticated routes via Fastify `inject()` |
+
+```bash
+# Run once
+yarn test
+
+# Watch mode
+yarn test:watch
+```
+
+All external I/O (Prisma, cashu-ts `Wallet`, `getEncodedTokenV4`, fetch) is mocked; no database or mint connection is required.
 
 ### Environment variables
 
