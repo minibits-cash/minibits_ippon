@@ -6,10 +6,37 @@ import { log } from '../services/logService'
 import { WalletService } from '../services/walletService'
 import AppError, { Err } from '../utils/AppError'
 
+const limitsSchema = {
+    type: 'object',
+    properties: {
+        max_balance: { type: 'integer' },
+        max_send:    { type: 'integer' },
+        max_pay:     { type: 'integer' },
+    },
+}
+
 export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
 
     // GET /v1/info
-    instance.get('/info', async (req: FastifyRequest, res: FastifyReply) => {
+    instance.get('/info', {
+        schema: {
+            description: 'Returns machine-readable information about the wallet service: status, mint URL, supported unit, and global balance/payment limits.',
+            tags: ['Info'],
+            response: {
+                200: {
+                    type: 'object',
+                    properties: {
+                        status: { type: 'string', example: 'operational' },
+                        help:   { type: 'string' },
+                        terms:  { type: 'string' },
+                        unit:   { type: 'string', enum: ['sat', 'msat'] },
+                        mint:   { type: 'string' },
+                        limits: limitsSchema,
+                    },
+                },
+            },
+        },
+    }, async (req: FastifyRequest, res: FastifyReply) => {
         const unit = process.env.UNIT || 'sat'
         const mintUrl = process.env.MINT_URL || ''
 
@@ -40,6 +67,30 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
     }>
 
     instance.post('/wallet', {
+        schema: {
+            description: 'Create a new short-lived wallet. Optionally provide a name for identification and an initial Cashu token to fund it immediately.',
+            tags: ['Wallet'],
+            body: {
+                type: 'object',
+                properties: {
+                    name:  { type: 'string', description: 'Optional label for the wallet' },
+                    token: { type: 'string', description: 'Optional Cashu token (cashuB...) to deposit on creation' },
+                },
+            },
+            response: {
+                200: {
+                    type: 'object',
+                    properties: {
+                        name:            { type: 'string' },
+                        access_key:      { type: 'string', description: 'Bearer token for all subsequent authenticated requests' },
+                        mint:            { type: 'string' },
+                        unit:            { type: 'string' },
+                        balance:         { type: 'integer' },
+                        pending_balance: { type: 'integer' },
+                    },
+                },
+            },
+        },
         config: {
             rateLimit: {
                 max: parseInt(process.env.RATE_LIMIT_CREATE_WALLET_MAX || '3'),

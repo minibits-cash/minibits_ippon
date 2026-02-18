@@ -18,7 +18,27 @@ import { getExchangeRate, isSupportedCurrency } from '../services/exchangeRateSe
 import AppError, { Err } from '../utils/AppError'
 
 
-// Helper to get the wallet from the request (attached by bearerAuthHandler)
+// ── Shared schema constants ────────────────────────────────────────────────────
+
+const BEARER = [{ bearerAuth: [] }]
+
+const meltQuoteProps = {
+    quote:            { type: 'string' },
+    amount:           { type: 'integer' },
+    fee_reserve:      { type: 'integer' },
+    state:            { type: 'string', enum: ['UNPAID', 'PENDING', 'PAID'] },
+    payment_preimage: { type: 'string', nullable: true },
+    expiry:           { type: 'integer' },
+}
+
+const depositQuoteProps = {
+    quote:   { type: 'string' },
+    request: { type: 'string', description: 'BOLT11 Lightning invoice' },
+    state:   { type: 'string', enum: ['UNPAID', 'PAID', 'ISSUED', 'EXPIRED'] },
+    expiry:  { type: 'integer' },
+}
+
+// ── Helper to get the wallet from the request (attached by bearerAuthHandler)
 function getAuthWallet(req: FastifyRequest): PrismaWallet {
     return (req as any).wallet as PrismaWallet
 }
@@ -52,7 +72,35 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
 
 
     // GET /v1/wallet
-    instance.get('/wallet', async (req: FastifyRequest, res: FastifyReply) => {
+    instance.get('/wallet', {
+        schema: {
+            description: 'Get the current wallet details including name, unit, mint, confirmed balance, and pending balance.',
+            tags: ['Wallet'],
+            security: BEARER,
+            response: {
+                200: {
+                    type: 'object',
+                    properties: {
+                        name:            { type: 'string' },
+                        access_key:      { type: 'string' },
+                        mint:            { type: 'string' },
+                        unit:            { type: 'string' },
+                        balance:         { type: 'integer' },
+                        pending_balance: { type: 'integer' },
+                        limits: {
+                            type: 'object',
+                            nullable: true,
+                            properties: {
+                                max_balance: { type: 'integer', nullable: true },
+                                max_send:    { type: 'integer', nullable: true },
+                                max_pay:     { type: 'integer', nullable: true },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }, async (req: FastifyRequest, res: FastifyReply) => {
         const wallet = getAuthWallet(req)
         const { balance, pendingBalance } = await WalletService.getWalletBalance(wallet.id)
 
@@ -82,7 +130,24 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
         }
     }>
 
-    instance.post('/wallet/deposit', async (req: DepositRequest, res: FastifyReply) => {
+    instance.post('/wallet/deposit', {
+        schema: {
+            description: 'Request a Lightning invoice to fund the wallet. The wallet automatically handles the mint quote and ecash issuance once the invoice is paid.',
+            tags: ['Deposit'],
+            security: BEARER,
+            body: {
+                type: 'object',
+                required: ['amount', 'unit'],
+                properties: {
+                    amount: { type: 'integer', description: 'Amount to deposit (in wallet unit)' },
+                    unit:   { type: 'string', enum: ['sat', 'msat'] },
+                },
+            },
+            response: {
+                200: { type: 'object', properties: depositQuoteProps },
+            },
+        },
+    }, async (req: DepositRequest, res: FastifyReply) => {
         const wallet = getAuthWallet(req)
         const { amount, unit } = req.body
 
@@ -117,7 +182,20 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
         Params: { quote: string }
     }>
 
-    instance.get('/wallet/deposit/:quote', async (req: DepositCheckRequest, res: FastifyReply) => {
+    instance.get('/wallet/deposit/:quote', {
+        schema: {
+            description: 'Check deposit status. Automatically mints ecash when the invoice is paid.',
+            tags: ['Deposit'],
+            security: BEARER,
+            params: {
+                type: 'object',
+                properties: { quote: { type: 'string', description: 'Quote ID returned by POST /wallet/deposit' } },
+            },
+            response: {
+                200: { type: 'object', properties: depositQuoteProps },
+            },
+        },
+    }, async (req: DepositCheckRequest, res: FastifyReply) => {
         const wallet = getAuthWallet(req)
         const { quote: quoteId } = req.params
 
@@ -166,7 +244,35 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
         }
     }>
 
-    instance.post('/wallet/send', async (req: SendRequest, res: FastifyReply) => {
+    instance.post('/wallet/send', {
+        schema: {
+            description: 'Export an ecash token for a specified amount. The wallet handles all necessary proof swaps and marks sent proofs as pending to prevent double-spending. Mint fees are paid by the sender. Optionally lock the token to a recipient pubkey (NUT-11 P2PK).',
+            tags: ['Send'],
+            security: BEARER,
+            body: {
+                type: 'object',
+                required: ['amount', 'unit'],
+                properties: {
+                    amount:         { type: 'integer' },
+                    unit:           { type: 'string', enum: ['sat', 'msat'] },
+                    memo:           { type: 'string', description: 'Optional memo embedded in the token' },
+                    lock_to_pubkey: { type: 'string', description: 'Lock token to a pubkey (NUT-11 P2PK). Accepts npub, 64-char x-only hex, or 66-char compressed hex.' },
+                    cashu_request:  { type: 'string', description: 'Pay a Cashu payment request (not yet implemented)' },
+                },
+            },
+            response: {
+                200: {
+                    type: 'object',
+                    properties: {
+                        token:  { type: 'string', description: 'Encoded Cashu token (cashuB...)' },
+                        amount: { type: 'integer' },
+                        unit:   { type: 'string' },
+                        memo:   { type: 'string', nullable: true },
+                    },
+                },
+            },
+        },
+    }, async (req: SendRequest, res: FastifyReply) => {
         const wallet = getAuthWallet(req)
         const { amount, unit, memo, lock_to_pubkey, cashu_request } = req.body
 
@@ -218,7 +324,42 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
         }
     }>
 
-    instance.post('/wallet/check', async (req: CheckRequest, res: FastifyReply) => {
+    instance.post('/wallet/check', {
+        schema: {
+            description: 'Check the current state of an exported Cashu token (e.g., whether it has been spent or swapped by the recipient).',
+            tags: ['Send'],
+            security: BEARER,
+            body: {
+                type: 'object',
+                required: ['token'],
+                properties: {
+                    token: { type: 'string', description: 'Cashu token to check' },
+                },
+            },
+            response: {
+                200: {
+                    type: 'object',
+                    properties: {
+                        amount: { type: 'integer' },
+                        unit:   { type: 'string' },
+                        memo:   { type: 'string', nullable: true },
+                        state:  { type: 'string', enum: ['UNSPENT', 'SPENT', 'PENDING', 'MIXED', 'UNKNOWN'] },
+                        mint_proof_states: {
+                            type: 'array',
+                            items: {
+                                type: 'object',
+                                properties: {
+                                    state:  { type: 'string' },
+                                    secret: { type: 'string' },
+                                },
+                                additionalProperties: true,
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }, async (req: CheckRequest, res: FastifyReply) => {
         const wallet = getAuthWallet(req)
         const { token: tokenStr } = req.body
 
@@ -279,7 +420,30 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
         }
     }>
 
-    instance.post('/wallet/decode', async (req: DecodeRequest, res: FastifyReply) => {
+    instance.post('/wallet/decode', {
+        schema: {
+            description: 'Decode a Cashu token, Cashu payment request, or BOLT11 invoice and return structured information.',
+            tags: ['Utils'],
+            security: BEARER,
+            body: {
+                type: 'object',
+                required: ['type', 'data'],
+                properties: {
+                    type: { type: 'string', enum: ['CASHU_TOKEN_V4', 'CASHU_TOKEN_V3', 'BOLT11_REQUEST', 'CASHU_REQUEST'] },
+                    data: { type: 'string' },
+                },
+            },
+            response: {
+                200: {
+                    type: 'object',
+                    properties: {
+                        type:    { type: 'string' },
+                        decoded: { type: 'object', additionalProperties: true },
+                    },
+                },
+            },
+        },
+    }, async (req: DecodeRequest, res: FastifyReply) => {
         const wallet = getAuthWallet(req)
         const { type, data } = req.body
 
@@ -342,7 +506,26 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
         }
     }>
 
-    instance.post('/wallet/pay', async (req: PayRequest, res: FastifyReply) => {
+    instance.post('/wallet/pay', {
+        schema: {
+            description: "Pay a BOLT11 Lightning invoice or Lightning address using the wallet's ecash balance. The wallet handles the melt quote, fees, and returns any change.",
+            tags: ['Pay'],
+            security: BEARER,
+            body: {
+                type: 'object',
+                required: ['amount', 'unit'],
+                properties: {
+                    bolt11_request:    { type: 'string', description: 'BOLT11 invoice to pay' },
+                    lightning_address: { type: 'string', description: 'Lightning address (e.g. user@domain.com)' },
+                    amount:            { type: 'integer' },
+                    unit:              { type: 'string', enum: ['sat', 'msat'] },
+                },
+            },
+            response: {
+                200: { type: 'object', properties: meltQuoteProps },
+            },
+        },
+    }, async (req: PayRequest, res: FastifyReply) => {
         const wallet = getAuthWallet(req)
         const { bolt11_request, lightning_address, amount, unit } = req.body
 
@@ -419,7 +602,20 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
         Params: { quote: string }
     }>
 
-    instance.get('/wallet/pay/:quote', async (req: PayCheckRequest, res: FastifyReply) => {
+    instance.get('/wallet/pay/:quote', {
+        schema: {
+            description: 'Check the status of a melt quote / payment operation (e.g., whether the invoice was successfully paid).',
+            tags: ['Pay'],
+            security: BEARER,
+            params: {
+                type: 'object',
+                properties: { quote: { type: 'string', description: 'Quote ID returned by POST /wallet/pay' } },
+            },
+            response: {
+                200: { type: 'object', properties: meltQuoteProps },
+            },
+        },
+    }, async (req: PayCheckRequest, res: FastifyReply) => {
         const wallet = getAuthWallet(req)
         const { quote: quoteId } = req.params
 
@@ -445,7 +641,31 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
         }
     }>
 
-    instance.post('/wallet/receive', async (req: ReceiveRequest, res: FastifyReply) => {
+    instance.post('/wallet/receive', {
+        schema: {
+            description: 'Import an external Cashu token. The wallet validates the token with the mint and swaps it for a fresh ecash token.',
+            tags: ['Receive'],
+            security: BEARER,
+            body: {
+                type: 'object',
+                required: ['token'],
+                properties: {
+                    token: { type: 'string', description: 'Cashu token to receive (cashuB...)' },
+                },
+            },
+            response: {
+                200: {
+                    type: 'object',
+                    properties: {
+                        amount:          { type: 'integer' },
+                        unit:            { type: 'string' },
+                        balance:         { type: 'integer' },
+                        pending_balance: { type: 'integer' },
+                    },
+                },
+            },
+        },
+    }, async (req: ReceiveRequest, res: FastifyReply) => {
         const wallet = getAuthWallet(req)
         const { token: tokenStr } = req.body
 
@@ -484,7 +704,29 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
         Params: { currency: string }
     }>
 
-    instance.get('/rate/:currency', async (req: RateRequest, res: FastifyReply) => {
+    instance.get('/rate/:currency', {
+        schema: {
+            description: "Get the current fiat exchange rate for the wallet's unit (e.g., satoshis per USD).",
+            tags: ['Utils'],
+            security: BEARER,
+            params: {
+                type: 'object',
+                properties: {
+                    currency: { type: 'string', description: 'ISO 4217 currency code (e.g. USD, EUR)' },
+                },
+            },
+            response: {
+                200: {
+                    type: 'object',
+                    properties: {
+                        currency:  { type: 'string' },
+                        rate:      { type: 'number', description: 'Satoshis per 1 unit of currency' },
+                        timestamp: { type: 'integer', description: 'Unix timestamp of the rate' },
+                    },
+                },
+            },
+        },
+    }, async (req: RateRequest, res: FastifyReply) => {
         const { currency } = req.params
 
         if (!isSupportedCurrency(currency)) {

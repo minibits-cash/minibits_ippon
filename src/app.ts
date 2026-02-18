@@ -29,6 +29,31 @@ export async function buildApp(): Promise<FastifyInstance> {
         }
     })
 
+    await app.register(import('@fastify/swagger'), {
+        openapi: {
+            openapi: '3.0.0',
+            info: {
+                title: 'Minibits Ippon API',
+                description: 'Minimalistic, API-driven ecash and Lightning wallet implementing the Cashu protocol. Designed for AI agents and automated systems requiring instant micropayment capability.',
+                version: '1.0.0',
+            },
+            components: {
+                securitySchemes: {
+                    bearerAuth: {
+                        type: 'http',
+                        scheme: 'bearer',
+                        description: 'Wallet access key returned at wallet creation. Pass as: Authorization: Bearer <access_key>',
+                    },
+                },
+            },
+        },
+    })
+
+    await app.register(import('@fastify/swagger-ui'), {
+        routePrefix: '/v1',
+        uiConfig: { docExpansion: 'list', deepLinking: true },
+    })
+
     await app.register(import('@fastify/rate-limit'), {
         global: false,
         max: parseInt(process.env.RATE_LIMIT_MAX || '100'),
