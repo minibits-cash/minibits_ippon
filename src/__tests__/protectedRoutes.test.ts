@@ -111,7 +111,7 @@ async function post(app: FastifyInstance, url: string, body: object, headers = A
     })
 }
 
-async function get(app: FastifyInstance, url: string, headers = AUTH) {
+async function get(app: FastifyInstance, url: string, headers: Record<string, string> = AUTH) {
     return app.inject({ method: 'GET', url, headers })
 }
 

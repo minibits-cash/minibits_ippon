@@ -238,6 +238,7 @@ describe('WalletService.meltProofs — error handling', () => {
     const MELT_QUOTE = {
         quote: 'mq1', amount: 500, fee_reserve: 10,
         state: MeltQuoteState.UNPAID, expiry: 3600,
+        unit: 'sat', request: 'lnbc...', payment_preimage: null,
     }
 
     beforeEach(() => {
