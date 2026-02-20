@@ -1,10 +1,15 @@
 import 'dotenv/config'
 import crypto from 'crypto'
-import { FastifyRequest, FastifyPluginCallback, FastifyReply } from 'fastify'
+import { FastifyPluginCallback, FastifyRequest, FastifyReply } from 'fastify'
 import prisma from '../utils/prismaClient'
 import { log } from '../services/logService'
 import { WalletService } from '../services/walletService'
 import AppError, { Err } from '../utils/AppError'
+import {
+    InfoResponse,
+    WalletCreateRequest,
+    WalletResponse,
+} from './routeTypes'
 
 const limitsSchema = {
     type: 'object',
@@ -23,7 +28,7 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
     // GET /v1/info
     instance.get('/info', {
         schema: {
-            description: 'Returns machine-readable information about the wallet service: status, mint URL, supported unit, and global balance/payment limits.',
+            description: 'Returns machine-readable information about the wallet service: status, mint URL, supported unit, and global balance/payment limits (including rate limits).',
             tags: ['Info'],
             response: {
                 200: {
@@ -39,39 +44,31 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
                 },
             },
         },
-    }, async (req: FastifyRequest, res: FastifyReply) => {
+    }, async (req: FastifyRequest, res: FastifyReply): Promise<InfoResponse> => {
         const unit = process.env.UNIT || 'sat'
         const mintUrl = process.env.MINT_URL || ''
 
-        const info = {
+        log.info('GET /v1/info', { reqId: req.id })
+
+        return {
             status: process.env.SERVICE_STATUS || 'operational',
-            help: process.env.SERVICE_HELP || '',
-            terms: process.env.SERVICE_TERMS || '',
+            help:   process.env.SERVICE_HELP  || '',
+            terms:  process.env.SERVICE_TERMS || '',
             unit,
-            mint: mintUrl,
+            mint:   mintUrl,
             limits: {
                 max_balance:                  parseInt(process.env.MAX_BALANCE || '100000'),
-                max_send:                     parseInt(process.env.MAX_SEND || '50000'),
-                max_pay:                      parseInt(process.env.MAX_PAY || '50000'),
-                rate_limit_max:               parseInt(process.env.RATE_LIMIT_MAX || '100'),
+                max_send:                     parseInt(process.env.MAX_SEND    || '50000'),
+                max_pay:                      parseInt(process.env.MAX_PAY     || '50000'),
+                rate_limit_max:               parseInt(process.env.RATE_LIMIT_MAX               || '100'),
                 rate_limit_create_wallet_max: parseInt(process.env.RATE_LIMIT_CREATE_WALLET_MAX || '3'),
                 rate_limit_window:            process.env.RATE_LIMIT_WINDOW || '1 minute',
             },
         }
-
-        log.info('GET /v1/info', { reqId: req.id })
-        return info
     })
 
 
     // POST /v1/wallet
-    type CreateWalletRequest = FastifyRequest<{
-        Body: {
-            name?: string
-            token?: string
-        }
-    }>
-
     instance.post('/wallet', {
         schema: {
             description: 'Create a new short-lived wallet. Optionally provide a name for identification and an initial Cashu token to fund it immediately.',
@@ -81,6 +78,15 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
                 properties: {
                     name:  { type: 'string', description: 'Optional label for the wallet' },
                     token: { type: 'string', description: 'Optional Cashu token (cashuB...) to deposit on creation' },
+                    limits: {
+                        type: 'object',
+                        description: 'Optional per-wallet spending caps. Values are capped to the global operator limits.',
+                        properties: {
+                            max_balance: { type: 'integer', description: 'Max wallet balance (in unit). Capped to global MAX_BALANCE.' },
+                            max_send:    { type: 'integer', description: 'Max ecash send amount. Capped to global MAX_SEND.' },
+                            max_pay:     { type: 'integer', description: 'Max Lightning payment amount. Capped to global MAX_PAY.' },
+                        },
+                    },
                 },
             },
             response: {
@@ -93,6 +99,15 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
                         unit:            { type: 'string' },
                         balance:         { type: 'integer' },
                         pending_balance: { type: 'integer' },
+                        limits: {
+                            type: 'object',
+                            nullable: true,
+                            properties: {
+                                max_balance: { type: 'integer', nullable: true },
+                                max_send:    { type: 'integer', nullable: true },
+                                max_pay:     { type: 'integer', nullable: true },
+                            },
+                        },
                     },
                 },
             },
@@ -103,8 +118,8 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
                 timeWindow: process.env.RATE_LIMIT_WINDOW || '1 minute',
             },
         },
-    }, async (req: CreateWalletRequest, res: FastifyReply) => {
-        const { name, token } = req.body || {}
+    }, async (req: WalletCreateRequest, res: FastifyReply): Promise<WalletResponse> => {
+        const { name, token, limits } = req.body || {}
         const mintUrl = process.env.MINT_URL || ''
         const unit = process.env.UNIT || 'sat'
 
@@ -113,9 +128,12 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
         const wallet = await prisma.wallet.create({
             data: {
                 accessKey,
-                name: name || null,
-                mint: mintUrl,
+                name:       name || null,
+                mint:       mintUrl,
                 unit,
+                maxBalance: limits?.max_balance ?? null,
+                maxSend:    limits?.max_send    ?? null,
+                maxPay:     limits?.max_pay     ?? null,
             },
         })
 
@@ -127,7 +145,7 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
             try {
                 const newProofs = await WalletService.receiveToken(wallet.id, token)
                 const amount = WalletService.getProofsAmount(newProofs)
-                const maxBalance = parseInt(process.env.MAX_BALANCE || '100000')
+                const maxBalance = wallet.maxBalance ?? parseInt(process.env.MAX_BALANCE || '100000')
 
                 if (amount > maxBalance) {
                     // Clean up: delete proofs and wallet
@@ -147,13 +165,18 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
 
         log.info('POST /v1/wallet', { walletId: wallet.id, name, hasToken: !!token, reqId: req.id })
 
+        const walletLimits = (wallet.maxBalance != null || wallet.maxSend != null || wallet.maxPay != null)
+            ? { max_balance: wallet.maxBalance, max_send: wallet.maxSend, max_pay: wallet.maxPay }
+            : null
+
         return {
-            name: wallet.name || '',
-            access_key: wallet.accessKey,
-            mint: wallet.mint,
-            unit: wallet.unit,
+            name:            wallet.name || '',
+            access_key:      wallet.accessKey,
+            mint:            wallet.mint,
+            unit:            wallet.unit,
             balance,
             pending_balance: pendingBalance,
+            limits:          walletLimits,
         }
     })
 

@@ -57,7 +57,7 @@ Returns machine-readable information about the wallet service, including status,
 
 | Authorization | Request Type | Response Type |
 |---------------|--------------|---------------|
-| N/A           | N/A          | WalletInfo    |
+| N/A           | N/A          | InfoResponse  |
 
 **Example:**
 ```bash
@@ -68,9 +68,9 @@ curl -X GET http://localhost:3001/v1/info
 
 Creates a new short-lived wallet. Optionally accepts an initial Cashu token to fund it immediately or a name for identification.
 
-| Authorization | Request Type    | Response Type |
-|---------------|-----------------|---------------|
-| N/A           | WalletRequest   | Wallet        |
+| Authorization | Request Type        | Response Type  |
+|---------------|---------------------|----------------|
+| N/A           | WalletCreateRequest | WalletResponse |
 
 **Example:**
 ```bash
@@ -83,9 +83,9 @@ curl -X POST http://localhost:3001/v1/wallet \
 
 Retrieves details of the current wallet, including its name, unit, mint, confirmed balance, and pending balance.
 
-| Authorization          | Request Type | Response Type |
-|------------------------|--------------|---------------|
-| Bearer access_key      | N/A          | Wallet        |
+| Authorization          | Request Type | Response Type  |
+|------------------------|--------------|----------------|
+| Bearer access_key      | N/A          | WalletResponse |
 
 **Example:**
 ```bash
@@ -242,6 +242,8 @@ The full interactive API reference — including all request bodies, response sc
 - **Raw OpenAPI 3.0 JSON**: `GET /v1/json`
 
 The spec is generated at runtime from the route definitions and is always in sync with the code.
+
+All request and response TypeScript types used in the route tables above are defined in [`src/routes/routeTypes.ts`](src/routes/routeTypes.ts).
 
 > **Note on amounts:** Despite the wallet operating with a single unit, amounts are always declared together with `unit` to keep values unambiguous (`unit` must always equal the wallet's configured `MintUnit`).
 

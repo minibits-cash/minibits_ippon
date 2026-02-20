@@ -16,6 +16,25 @@ import { WalletService } from '../services/walletService'
 import { NostrService } from '../services/nostrService'
 import { getExchangeRate, isSupportedCurrency } from '../services/exchangeRateService'
 import AppError, { Err } from '../utils/AppError'
+import {
+    WalletResponse,
+    WalletDepositRequest,
+    DepositCheckRequest,
+    WalletDepositResponse,
+    WalletSendRequest,
+    WalletSendResponse,
+    WalletCheckRequest,
+    WalletCheckResponse,
+    WalletDecodeRequest,
+    WalletDecodeResponse,
+    WalletPayRequest,
+    PayCheckRequest,
+    WalletPayResponse,
+    WalletReceiveRequest,
+    WalletReceiveResponse,
+    RateRequest,
+    RateResponse,
+} from './routeTypes'
 
 
 // ── Shared schema constants ────────────────────────────────────────────────────
@@ -100,36 +119,29 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
                 },
             },
         },
-    }, async (req: FastifyRequest, res: FastifyReply) => {
+    }, async (req: FastifyRequest, res: FastifyReply): Promise<WalletResponse> => {
         const wallet = getAuthWallet(req)
         const { balance, pendingBalance } = await WalletService.getWalletBalance(wallet.id)
 
         log.info('GET /v1/wallet', { walletId: wallet.id, reqId: req.id })
 
         return {
-            name: wallet.name || '',
-            access_key: wallet.accessKey,
-            mint: wallet.mint,
-            unit: wallet.unit,
+            name:            wallet.name || '',
+            access_key:      wallet.accessKey,
+            mint:            wallet.mint,
+            unit:            wallet.unit,
             balance,
             pending_balance: pendingBalance,
-            limits: (wallet.maxBalance || wallet.maxSend || wallet.maxPay) ? {
+            limits: (wallet.maxBalance != null || wallet.maxSend != null || wallet.maxPay != null) ? {
                 max_balance: wallet.maxBalance,
-                max_send: wallet.maxSend,
-                max_pay: wallet.maxPay,
-            } : undefined,
+                max_send:    wallet.maxSend,
+                max_pay:     wallet.maxPay,
+            } : null,
         }
     })
 
 
     // POST /v1/wallet/deposit
-    type DepositRequest = FastifyRequest<{
-        Body: {
-            amount: number
-            unit: string
-        }
-    }>
-
     instance.post('/wallet/deposit', {
         schema: {
             description: 'Request a Lightning invoice to fund the wallet. The wallet automatically handles the mint quote and ecash issuance once the invoice is paid.',
@@ -147,7 +159,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
                 200: { type: 'object', properties: depositQuoteProps },
             },
         },
-    }, async (req: DepositRequest, res: FastifyReply) => {
+    }, async (req: WalletDepositRequest, res: FastifyReply): Promise<WalletDepositResponse> => {
         const wallet = getAuthWallet(req)
         const { amount, unit } = req.body
 
@@ -178,10 +190,6 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
 
 
     // GET /v1/wallet/deposit/:quote
-    type DepositCheckRequest = FastifyRequest<{
-        Params: { quote: string }
-    }>
-
     instance.get('/wallet/deposit/:quote', {
         schema: {
             description: 'Check deposit status. Automatically mints ecash when the invoice is paid.',
@@ -195,7 +203,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
                 200: { type: 'object', properties: depositQuoteProps },
             },
         },
-    }, async (req: DepositCheckRequest, res: FastifyReply) => {
+    }, async (req: DepositCheckRequest, res: FastifyReply): Promise<WalletDepositResponse> => {
         const wallet = getAuthWallet(req)
         const { quote: quoteId } = req.params
 
@@ -234,16 +242,6 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
 
 
     // POST /v1/wallet/send
-    type SendRequest = FastifyRequest<{
-        Body: {
-            amount: number
-            unit: string
-            cashu_request?: string
-            memo?: string
-            lock_to_pubkey?: string
-        }
-    }>
-
     instance.post('/wallet/send', {
         schema: {
             description: 'Export an ecash token for a specified amount. The wallet handles all necessary proof swaps and marks sent proofs as pending to prevent double-spending. Mint fees are paid by the sender. Optionally lock the token to a recipient pubkey (NUT-11 P2PK).',
@@ -272,7 +270,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
                 },
             },
         },
-    }, async (req: SendRequest, res: FastifyReply) => {
+    }, async (req: WalletSendRequest, res: FastifyReply): Promise<WalletSendResponse> => {
         const wallet = getAuthWallet(req)
         const { amount, unit, memo, lock_to_pubkey, cashu_request } = req.body
 
@@ -318,12 +316,6 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
 
 
     // POST /v1/wallet/check
-    type CheckRequest = FastifyRequest<{
-        Body: {
-            token: string
-        }
-    }>
-
     instance.post('/wallet/check', {
         schema: {
             description: 'Check the current state of an exported Cashu token (e.g., whether it has been spent or swapped by the recipient).',
@@ -349,8 +341,9 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
                             items: {
                                 type: 'object',
                                 properties: {
-                                    state:  { type: 'string' },
-                                    secret: { type: 'string' },
+                                    Y:       { type: 'string', description: 'Hash-to-curve of the proof secret' },
+                                    state:   { type: 'string', enum: ['UNSPENT', 'PENDING', 'SPENT'] },
+                                    witness: { type: 'string', nullable: true },
                                 },
                                 additionalProperties: true,
                             },
@@ -359,7 +352,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
                 },
             },
         },
-    }, async (req: CheckRequest, res: FastifyReply) => {
+    }, async (req: WalletCheckRequest, res: FastifyReply): Promise<WalletCheckResponse> => {
         const wallet = getAuthWallet(req)
         const { token: tokenStr } = req.body
 
@@ -413,13 +406,6 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
 
 
     // POST /v1/wallet/decode
-    type DecodeRequest = FastifyRequest<{
-        Body: {
-            type: string
-            data: string
-        }
-    }>
-
     instance.post('/wallet/decode', {
         schema: {
             description: 'Decode a Cashu token, Cashu payment request, or BOLT11 invoice and return structured information.',
@@ -443,7 +429,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
                 },
             },
         },
-    }, async (req: DecodeRequest, res: FastifyReply) => {
+    }, async (req: WalletDecodeRequest, res: FastifyReply): Promise<WalletDecodeResponse> => {
         const wallet = getAuthWallet(req)
         const { type, data } = req.body
 
@@ -490,15 +476,6 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
 
 
     // POST /v1/wallet/pay
-    type PayRequest = FastifyRequest<{
-        Body: {
-            lightning_address?: string
-            bolt11_request?: string
-            amount: number
-            unit: string
-        }
-    }>
-
     instance.post('/wallet/pay', {
         schema: {
             description: "Pay a BOLT11 Lightning invoice or Lightning address using the wallet's ecash balance. The wallet handles the melt quote, fees, and returns any change.",
@@ -518,7 +495,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
                 200: { type: 'object', properties: meltQuoteProps },
             },
         },
-    }, async (req: PayRequest, res: FastifyReply) => {
+    }, async (req: WalletPayRequest, res: FastifyReply): Promise<WalletPayResponse> => {
         const wallet = getAuthWallet(req)
         const { bolt11_request, lightning_address, amount, unit } = req.body
 
@@ -591,10 +568,6 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
 
 
     // GET /v1/wallet/pay/:quote
-    type PayCheckRequest = FastifyRequest<{
-        Params: { quote: string }
-    }>
-
     instance.get('/wallet/pay/:quote', {
         schema: {
             description: 'Check the status of a melt quote / payment operation (e.g., whether the invoice was successfully paid).',
@@ -608,7 +581,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
                 200: { type: 'object', properties: meltQuoteProps },
             },
         },
-    }, async (req: PayCheckRequest, res: FastifyReply) => {
+    }, async (req: PayCheckRequest, res: FastifyReply): Promise<WalletPayResponse> => {
         const wallet = getAuthWallet(req)
         const { quote: quoteId } = req.params
 
@@ -628,12 +601,6 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
 
 
     // POST /v1/wallet/receive
-    type ReceiveRequest = FastifyRequest<{
-        Body: {
-            token: string
-        }
-    }>
-
     instance.post('/wallet/receive', {
         schema: {
             description: 'Import an external Cashu token. The wallet validates the token with the mint and swaps it for a fresh ecash token.',
@@ -658,7 +625,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
                 },
             },
         },
-    }, async (req: ReceiveRequest, res: FastifyReply) => {
+    }, async (req: WalletReceiveRequest, res: FastifyReply): Promise<WalletReceiveResponse> => {
         const wallet = getAuthWallet(req)
         const { token: tokenStr } = req.body
 
@@ -693,10 +660,6 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
 
 
     // GET /v1/rate/:currency
-    type RateRequest = FastifyRequest<{
-        Params: { currency: string }
-    }>
-
     instance.get('/rate/:currency', {
         schema: {
             description: "Get the current fiat exchange rate for the wallet's unit (e.g., satoshis per USD).",
@@ -719,7 +682,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
                 },
             },
         },
-    }, async (req: RateRequest, res: FastifyReply) => {
+    }, async (req: RateRequest, res: FastifyReply): Promise<RateResponse> => {
         const { currency } = req.params
 
         if (!isSupportedCurrency(currency)) {
