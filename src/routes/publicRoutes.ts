@@ -71,7 +71,7 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
     // POST /v1/wallet
     instance.post('/wallet', {
         schema: {
-            description: 'Create a new short-lived wallet. Optionally provide a name for identification and an initial Cashu token to fund it immediately.',
+            description: 'Create a new short-lived wallet. Optionally provide a name for identification, wallet-level limits, and an initial Cashu token to fund it immediately.',
             tags: ['Wallet'],
             body: {
                 type: 'object',
