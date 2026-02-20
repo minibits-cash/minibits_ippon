@@ -12,7 +12,7 @@ Minibits Ippon is a minimalistic, API-driven ecash and Lightning wallet implemen
 > - [Wallet info](https://ippon.minibits.cash/v1/info) — wallet service info (`GET /v1/info`)
 > - [MCP server](https://ippon.minibits.cash/mcp) — MCP server to make usage by AI agents easier (`POST /mcp`)
 >
-> Also available over Tor for enhanced privacy (requires [Tor Browser](https://www.torproject.org/) or a Tor-enabled client):
+> Also available as Tor hidden service (requires [Tor Browser](https://www.torproject.org/) or a Tor-enabled client):
 >
 > - `eaqmg2oqhay5btz5v75bgknfb3x4q4vesfijjzvgkbgocn5fvhkntwad.onion`
 >
