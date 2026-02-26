@@ -176,7 +176,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
             throw new AppError(400, Err.LIMIT_ERROR, `Deposit would exceed max balance of ${maxBalance}`, { caller: 'Deposit', reqId: req.id })
         }
 
-        const quote = await WalletService.createMintQuote(amount)
+        const quote = await WalletService.createMintQuote(amount, wallet.mint)
 
         log.info('POST /v1/wallet/deposit', { walletId: wallet.id, amount, quote: quote.quote, reqId: req.id })
 
@@ -207,12 +207,12 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
         const wallet = getAuthWallet(req)
         const { quote: quoteId } = req.params
 
-        const quote = await WalletService.checkMintQuote(quoteId)
+        const quote = await WalletService.checkMintQuote(quoteId, wallet.mint)
 
         // If paid, mint the proofs automatically
         if (quote.state === MintQuoteState.PAID) {
             try {
-                const proofs = await WalletService.mintProofs(quote.amount, quote.quote)
+                const proofs = await WalletService.mintProofs(quote.amount, quote.quote, wallet.mint)
                 await WalletService.saveProofs(wallet.id, proofs)
 
                 log.info('GET /v1/wallet/deposit/:quote - Minted proofs', {
@@ -294,11 +294,10 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
             p2pkPubkey = NostrService.normalizePubkey(lock_to_pubkey)
         }
 
-        const { send } = await WalletService.sendProofs(wallet.id, amount, p2pkPubkey)
-        const mintUrl = process.env.MINT_URL || ''
+        const { send } = await WalletService.sendProofs(wallet.id, amount, wallet.mint, p2pkPubkey)
 
         const token = getEncodedTokenV4({
-            mint: mintUrl,
+            mint: wallet.mint,
             proofs: send,
             memo,
             unit: wallet.unit,
@@ -544,8 +543,8 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
             throw new AppError(400, Err.VALIDATION_ERROR, 'Could not resolve a bolt11 invoice', { caller: 'Pay', reqId: req.id })
         }
 
-        const meltQuote = await WalletService.createMeltQuote(invoice)
-        const meltResponse = await WalletService.meltProofs(wallet.id, meltQuote)
+        const meltQuote = await WalletService.createMeltQuote(invoice, wallet.mint)
+        const meltResponse = await WalletService.meltProofs(wallet.id, meltQuote, wallet.mint)
 
         log.info('POST /v1/wallet/pay', {
             walletId: wallet.id,
@@ -585,7 +584,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
         const wallet = getAuthWallet(req)
         const { quote: quoteId } = req.params
 
-        const quote = await WalletService.checkMeltQuote(quoteId)
+        const quote = await WalletService.checkMeltQuote(quoteId, wallet.mint)
 
         log.info('GET /v1/wallet/pay/:quote', { walletId: wallet.id, quoteId, state: quote.state, reqId: req.id })
 
@@ -644,7 +643,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
             throw new AppError(400, Err.LIMIT_ERROR, `Receiving ${tokenAmount} would exceed max balance of ${maxBalance}`, { caller: 'Receive', reqId: req.id })
         }
 
-        const newProofs = await WalletService.receiveToken(wallet.id, tokenStr)
+        const newProofs = await WalletService.receiveToken(wallet.id, tokenStr, wallet.mint)
         const amount = WalletService.getProofsAmount(newProofs)
         const { balance, pendingBalance } = await WalletService.getWalletBalance(wallet.id)
 

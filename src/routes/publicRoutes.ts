@@ -28,7 +28,7 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
     // GET /v1/info
     instance.get('/info', {
         schema: {
-            description: 'Returns machine-readable information about the wallet service: status, mint URL, supported unit, and global balance/payment limits (including rate limits).',
+            description: 'Returns machine-readable information about the wallet service: status, supported mints, unit, and global balance/payment limits (including rate limits).',
             tags: ['Info'],
             response: {
                 200: {
@@ -38,7 +38,7 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
                         help:   { type: 'string' },
                         terms:  { type: 'string' },
                         unit:   { type: 'string', enum: ['sat', 'msat'] },
-                        mint:   { type: 'string' },
+                        mints:  { type: 'array', items: { type: 'string' }, description: 'List of supported Cashu mint URLs' },
                         limits: limitsSchema,
                     },
                 },
@@ -46,7 +46,6 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
         },
     }, async (req: FastifyRequest, res: FastifyReply): Promise<InfoResponse> => {
         const unit = process.env.UNIT || 'sat'
-        const mintUrl = process.env.MINT_URL || ''
 
         log.info('GET /v1/info', { reqId: req.id })
 
@@ -55,7 +54,7 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
             help:   process.env.SERVICE_HELP  || '',
             terms:  process.env.SERVICE_TERMS || '',
             unit,
-            mint:   mintUrl,
+            mints:  WalletService.getMintUrls(),
             limits: {
                 max_balance:                  parseInt(process.env.MAX_BALANCE || '100000'),
                 max_send:                     parseInt(process.env.MAX_SEND    || '50000'),
@@ -71,13 +70,14 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
     // POST /v1/wallet
     instance.post('/wallet', {
         schema: {
-            description: 'Create a new short-lived wallet. Optionally provide a name for identification, wallet-level limits, and an initial Cashu token to fund it immediately.',
+            description: 'Create a new short-lived wallet. Optionally specify a supported mint URL (defaults to the first configured mint), provide a name, wallet-level limits, and an initial Cashu token to fund it immediately.',
             tags: ['Wallet'],
             body: {
                 type: 'object',
                 properties: {
-                    name:  { type: 'string', description: 'Optional label for the wallet' },
-                    token: { type: 'string', description: 'Optional Cashu token (cashuB...) to deposit on creation' },
+                    name:     { type: 'string', description: 'Optional label for the wallet' },
+                    token:    { type: 'string', description: 'Optional Cashu token (cashuB...) to deposit on creation' },
+                    mint_url: { type: 'string', description: 'Mint URL to bind this wallet to. Must be one of the supported mints. Defaults to the first configured mint.' },
                     limits: {
                         type: 'object',
                         description: 'Optional per-wallet spending caps. Values are capped to the global operator limits.',
@@ -119,9 +119,18 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
             },
         },
     }, async (req: WalletCreateRequest, res: FastifyReply): Promise<WalletResponse> => {
-        const { name, token, limits } = req.body || {}
-        const mintUrl = process.env.MINT_URL || ''
+        const { name, token, mint_url, limits } = req.body || {}
         const unit = process.env.UNIT || 'sat'
+
+        const mintUrls = WalletService.getMintUrls()
+        if (mintUrls.length === 0) {
+            throw new AppError(500, Err.VALIDATION_ERROR, 'No supported mints configured on this server', { caller: 'CreateWallet' })
+        }
+
+        const resolvedMintUrl = mint_url || mintUrls[0]
+        if (!mintUrls.includes(resolvedMintUrl)) {
+            throw new AppError(400, Err.VALIDATION_ERROR, `Mint '${resolvedMintUrl}' is not in the list of supported mints`, { caller: 'CreateWallet' })
+        }
 
         const accessKey = crypto.randomBytes(32).toString('hex')
 
@@ -129,7 +138,7 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
             data: {
                 accessKey,
                 name:       name || null,
-                mint:       mintUrl,
+                mint:       resolvedMintUrl,
                 unit,
                 maxBalance: limits?.max_balance ?? null,
                 maxSend:    limits?.max_send    ?? null,
@@ -143,7 +152,7 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
         // If a token was provided, receive it immediately
         if (token) {
             try {
-                const newProofs = await WalletService.receiveToken(wallet.id, token)
+                const newProofs = await WalletService.receiveToken(wallet.id, token, resolvedMintUrl)
                 const amount = WalletService.getProofsAmount(newProofs)
                 const maxBalance = wallet.maxBalance ?? parseInt(process.env.MAX_BALANCE || '100000')
 
@@ -163,7 +172,7 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
             }
         }
 
-        log.info('POST /v1/wallet', { walletId: wallet.id, name, hasToken: !!token, reqId: req.id })
+        log.info('POST /v1/wallet', { walletId: wallet.id, name, mint: resolvedMintUrl, hasToken: !!token, reqId: req.id })
 
         const walletLimits = (wallet.maxBalance != null || wallet.maxSend != null || wallet.maxPay != null)
             ? { max_balance: wallet.maxBalance, max_send: wallet.maxSend, max_pay: wallet.maxPay }

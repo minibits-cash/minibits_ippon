@@ -16,28 +16,25 @@ import prisma from '../utils/prismaClient'
 import AppError, { Err } from '../utils/AppError'
 import { log } from './logService'
 
-let _wallet: Wallet | undefined = undefined
+const _wallets = new Map<string, Wallet>()
 
-const getWallet = async function (): Promise<Wallet> {
-    if (_wallet) {
-        return _wallet
+const getMintUrls = function (): string[] {
+    const raw = process.env.MINT_URLS || ''
+    return raw.split(',').map(u => u.trim()).filter(u => u.length > 0)
+}
+
+const getWallet = async function (mintUrl: string): Promise<Wallet> {
+    if (_wallets.has(mintUrl)) {
+        return _wallets.get(mintUrl)!
     }
 
-    if (!process.env.MINT_URL) {
-        throw new AppError(500, Err.VALIDATION_ERROR, 'Missing MINT_URL environment variable', { caller: 'getWallet' })
-    }
+    const unit = process.env.UNIT || 'sat'
 
-    if (!process.env.UNIT) {
-        throw new AppError(500, Err.VALIDATION_ERROR, 'Missing UNIT environment variable', { caller: 'getWallet' })
-    }
+    log.debug('[getWallet] Creating new wallet instance', { mintUrl, unit })
 
-    const unit = process.env.UNIT
-
-    log.debug('[getWallet] Creating new wallet instance', { mintUrl: process.env.MINT_URL, unit })
-
-    const cashuWallet = new Wallet(process.env.MINT_URL, { unit })
+    const cashuWallet = new Wallet(mintUrl, { unit })
     await cashuWallet.loadMint()
-    _wallet = cashuWallet
+    _wallets.set(mintUrl, cashuWallet)
 
     return cashuWallet
 }
@@ -120,9 +117,9 @@ const updateProofsStatus = async function (walletId: number, secrets: string[], 
 }
 
 
-const createMintQuote = async function (amount: number): Promise<MintQuoteBolt11Response> {
+const createMintQuote = async function (amount: number, mintUrl: string): Promise<MintQuoteBolt11Response> {
     try {
-        const wallet = await getWallet()
+        const wallet = await getWallet(mintUrl)
         const quote = await wallet.createMintQuoteBolt11(amount)
         log.debug('[createMintQuote]', { quote: quote.quote, amount })
         return quote
@@ -132,9 +129,9 @@ const createMintQuote = async function (amount: number): Promise<MintQuoteBolt11
 }
 
 
-const checkMintQuote = async function (quoteId: string): Promise<MintQuoteBolt11Response> {
+const checkMintQuote = async function (quoteId: string, mintUrl: string): Promise<MintQuoteBolt11Response> {
     try {
-        const wallet = await getWallet()
+        const wallet = await getWallet(mintUrl)
         return await wallet.checkMintQuoteBolt11(quoteId)
     } catch (e: any) {
         throw new AppError(500, Err.CONNECTION_ERROR, e.message, { caller: 'checkMintQuote' })
@@ -142,9 +139,9 @@ const checkMintQuote = async function (quoteId: string): Promise<MintQuoteBolt11
 }
 
 
-const mintProofs = async function (amount: number, quoteId: string): Promise<Proof[]> {
+const mintProofs = async function (amount: number, quoteId: string, mintUrl: string): Promise<Proof[]> {
     try {
-        const wallet = await getWallet()
+        const wallet = await getWallet(mintUrl)
         return await wallet.mintProofsBolt11(amount, quoteId)
     } catch (e: any) {
         throw new AppError(500, Err.CONNECTION_ERROR, e.message, { caller: 'mintProofs' })
@@ -152,8 +149,8 @@ const mintProofs = async function (amount: number, quoteId: string): Promise<Pro
 }
 
 
-const sendProofs = async function (walletId: number, amount: number, p2pkPubkey?: string): Promise<{ keep: Proof[], send: Proof[] }> {
-    const wallet = await getWallet()
+const sendProofs = async function (walletId: number, amount: number, mintUrl: string, p2pkPubkey?: string): Promise<{ keep: Proof[], send: Proof[] }> {
+    const wallet = await getWallet(mintUrl)
     const proofs = await loadProofs(walletId)
     const totalBalance = getProofsAmount(proofs)
 
@@ -166,7 +163,7 @@ const sendProofs = async function (walletId: number, amount: number, p2pkPubkey?
         : undefined
 
     // Sender pays all fees - we include fees that the receiver will need to pay when claiming the proofs,
-    // to make sure he receives the full intended amount    
+    // to make sure he receives the full intended amount
     const { keep, send } = await wallet.send(amount, proofs, { includeFees: true }, outputConfig)
 
     // Determine which input proofs were consumed by the swap vs returned as-is
@@ -203,17 +200,21 @@ const sendProofs = async function (walletId: number, amount: number, p2pkPubkey?
 }
 
 
-const receiveToken = async function (walletId: number, tokenStr: string): Promise<Proof[]> {
-    const wallet = await getWallet()
+const receiveToken = async function (walletId: number, tokenStr: string, mintUrl: string): Promise<Proof[]> {
+    const decoded = getDecodedToken(tokenStr)
+    if (decoded.mint !== mintUrl) {
+        throw new AppError(400, Err.VALIDATION_ERROR, `Token mint '${decoded.mint}' does not match wallet mint '${mintUrl}'`, { caller: 'receiveToken' })
+    }
+    const wallet = await getWallet(mintUrl)
     const newProofs = await wallet.receive(tokenStr)
     await saveProofs(walletId, newProofs, ProofStatus.UNSPENT)
     return newProofs
 }
 
 
-const createMeltQuote = async function (bolt11: string): Promise<MeltQuoteBolt11Response> {
+const createMeltQuote = async function (bolt11: string, mintUrl: string): Promise<MeltQuoteBolt11Response> {
     try {
-        const wallet = await getWallet()
+        const wallet = await getWallet(mintUrl)
         return await wallet.createMeltQuoteBolt11(bolt11)
     } catch (e: any) {
         throw new AppError(500, Err.CONNECTION_ERROR, e.message, { caller: 'createMeltQuote' })
@@ -221,9 +222,9 @@ const createMeltQuote = async function (bolt11: string): Promise<MeltQuoteBolt11
 }
 
 
-const checkMeltQuote = async function (quoteId: string): Promise<MeltQuoteBolt11Response> {
+const checkMeltQuote = async function (quoteId: string, mintUrl: string): Promise<MeltQuoteBolt11Response> {
     try {
-        const wallet = await getWallet()
+        const wallet = await getWallet(mintUrl)
         return await wallet.checkMeltQuoteBolt11(quoteId)
     } catch (e: any) {
         throw new AppError(500, Err.CONNECTION_ERROR, e.message, { caller: 'checkMeltQuote' })
@@ -234,8 +235,9 @@ const checkMeltQuote = async function (quoteId: string): Promise<MeltQuoteBolt11
 const meltProofs = async function (
     walletId: number,
     meltQuote: MeltQuoteBolt11Response,
+    mintUrl: string,
 ): Promise<{ quote: MeltQuoteBolt11Response, change: Proof[] }> {
-    const wallet = await getWallet()
+    const wallet = await getWallet(mintUrl)
 
     const amountNeeded = meltQuote.amount + meltQuote.fee_reserve
     const proofs = await loadProofs(walletId)
@@ -310,11 +312,11 @@ const meltProofs = async function (
 
                 if (errorCode === 11002) {
                     // Proofs are pending at the mint — keep them PENDING
-                    await syncProofsStateWithMint(walletId)
+                    await syncProofsStateWithMint(walletId, mintUrl)
                     throw new AppError(202, Err.TIMEOUT_ERROR, `Melt failed: proofs are pending at the mint. Check quote ${meltQuote.quote} later.`, { caller: 'meltProofs' })
                 } else if (errorCode === 11001) {
                     // Proofs already spent — sync all pending proofs with the mint
-                    await syncProofsStateWithMint(walletId)
+                    await syncProofsStateWithMint(walletId, mintUrl)
                     throw new AppError(500, Err.CONNECTION_ERROR, `Melt failed: proofs already spent. Wallet state synced with mint.`, { caller: 'meltProofs' })
                 } else {
                     // Other error: safe to revert proofs back to UNSPENT
@@ -331,8 +333,8 @@ const meltProofs = async function (
 }
 
 
-const syncProofsStateWithMint = async function (walletId: number): Promise<{ spent: number, pending: number, unspent: number }> {
-    const wallet = await getWallet()
+const syncProofsStateWithMint = async function (walletId: number, mintUrl: string): Promise<{ spent: number, pending: number, unspent: number }> {
+    const wallet = await getWallet(mintUrl)
     const pendingProofs = await loadProofs(walletId, ProofStatus.PENDING)
 
     if (pendingProofs.length === 0) {
@@ -377,14 +379,15 @@ const syncProofsStateWithMint = async function (walletId: number): Promise<{ spe
 
 
 const checkTokenState = async function (tokenStr: string): Promise<{ proofStates: ProofState[], token: Token }> {
-    const wallet = await getWallet()
     const token = getDecodedToken(tokenStr)
+    const wallet = await getWallet(token.mint)
     const proofStates = await wallet.checkProofsStates(token.proofs)
     return { proofStates, token }
 }
 
 
 export const WalletService = {
+    getMintUrls,
     getWallet,
     getProofsAmount,
     getWalletBalance,

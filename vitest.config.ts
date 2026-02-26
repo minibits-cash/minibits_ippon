@@ -6,7 +6,7 @@ export default defineConfig({
         environment: 'node',
         env: {
             NODE_ENV: 'test',
-            MINT_URL: 'https://testmint.example.com',
+            MINT_URLS: 'https://testmint.example.com',
             UNIT: 'sat',
             MAX_BALANCE: '100000',
             MAX_SEND: '50000',

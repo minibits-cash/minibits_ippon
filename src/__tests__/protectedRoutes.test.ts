@@ -187,7 +187,7 @@ describe('POST /v1/wallet/deposit', () => {
         expect(res.statusCode).toBe(200)
         const body = res.json()
         expect(body.quote).toBe('quote-id-123')
-        expect(mocks.createMintQuote).toHaveBeenCalledWith(1000)
+        expect(mocks.createMintQuote).toHaveBeenCalledWith(1000, WALLET.mint)
     })
 
     it('rejects wrong unit', async () => {
@@ -241,7 +241,7 @@ describe('GET /v1/wallet/deposit/:quote', () => {
         mocks.mintProofs.mockResolvedValue([{ id: 'p1', amount: 1000, secret: 's1', C: 'C1' }])
         const res = await get(app, '/v1/wallet/deposit/q1')
         expect(res.statusCode).toBe(200)
-        expect(mocks.mintProofs).toHaveBeenCalledWith(1000, 'q1')
+        expect(mocks.mintProofs).toHaveBeenCalledWith(1000, 'q1', WALLET.mint)
         expect(mocks.saveProofs).toHaveBeenCalled()
     })
 })
@@ -274,7 +274,7 @@ describe('POST /v1/wallet/send', () => {
             amount: 500, unit: 'sat', lock_to_pubkey: pubkey66,
         })
         expect(res.statusCode).toBe(200)
-        expect(mocks.sendProofs).toHaveBeenCalledWith(WALLET.id, 500, pubkey66)
+        expect(mocks.sendProofs).toHaveBeenCalledWith(WALLET.id, 500, WALLET.mint, pubkey66)
     })
 
     it('rejects invalid lock_to_pubkey', async () => {
@@ -388,7 +388,7 @@ describe('POST /v1/wallet/pay', () => {
             lightning_address: 'user@example.com', amount: 1000, unit: 'sat',
         })
         expect(res.statusCode).toBe(200)
-        expect(mocks.createMeltQuote).toHaveBeenCalledWith('lnbc10u_from_lnurl')
+        expect(mocks.createMeltQuote).toHaveBeenCalledWith('lnbc10u_from_lnurl', WALLET.mint)
     })
 })
 

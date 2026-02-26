@@ -25,9 +25,9 @@ Minibits Ippon is intended for server-side deployment, ideally by a Cashu mint o
 
 To minimize complexity and provide an extremely simple API that AI agents can easily understand and use, Ippon adheres to strict design constraints:
 
-### Single mint and single unit only
-    
-This simplifies the API and usage dramatically. Ippon is run by a mint operator who should not assume custody over ecash from other mints, keeping the operator's custody scope unchanged.
+### Mints defined by operator, single unit
+
+Ippon supports one or more Cashu mints configured via the `MINT_URLS` environment variable (comma-separated list). All mints share a single unit (e.g. `sat`), keeping the API simple. Each wallet is bound to exactly one mint at creation time; the first listed mint is the default. Operators control which mints are accepted, keeping custody scope well-defined.
 
 ### Seed-less wallets
     
@@ -269,7 +269,7 @@ yarn install
 
 # Copy and configure environment
 cp .env.example .env
-# Edit .env — set DATABASE_URL, MINT_URL, UNIT, limits, etc.
+# Edit .env — set DATABASE_URL, MINT_URLS, UNIT, limits, etc.
 
 # Create database and apply schema
 npx prisma migrate dev --name init
@@ -319,7 +319,7 @@ All external I/O (Prisma, cashu-ts `Wallet`, `getEncodedTokenV4`, fetch) is mock
 | `DATABASE_URL` | PostgreSQL connection string | — |
 | `PORT` | HTTP server port | `3001` |
 | `LOG_LEVEL` | Log verbosity (`trace`, `debug`, `info`, `warn`, `error`) | `debug` |
-| `MINT_URL` | Cashu mint URL | — |
+| `MINT_URLS` | Comma-separated list of supported Cashu mint URLs. First entry is the default. | — |
 | `UNIT` | Wallet unit (`sat` or `msat`) | `sat` |
 | `MAX_BALANCE` | Global max wallet balance (in unit) | `100000` |
 | `MAX_SEND` | Global max ecash send amount | `50000` |

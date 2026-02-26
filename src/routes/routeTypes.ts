@@ -26,7 +26,7 @@ export interface InfoResponse {
     help:   string
     terms:  string
     unit:   string
-    mint:   string
+    mints:  string[]
     limits: InfoLimits
 }
 
@@ -34,8 +34,9 @@ export interface InfoResponse {
 
 export type WalletCreateRequest = FastifyRequest<{
     Body: {
-        name?:   string
-        token?:  string
+        name?:     string
+        token?:    string
+        mint_url?: string
         limits?: {
             max_balance?: number
             max_send?:    number

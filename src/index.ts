@@ -13,8 +13,14 @@ app.listen({
         process.exit(1)
     }
 
-    if (!process.env.MINT_URL) {
-        log.error('Missing MINT_URL environment variable, exiting...')
+    if (!process.env.MINT_URLS) {
+        log.error('Missing MINT_URLS environment variable, exiting...')
+        process.exit(1)
+    }
+
+    const mintUrls = process.env.MINT_URLS.split(',').map((u: string) => u.trim()).filter((u: string) => u.length > 0)
+    if (mintUrls.length === 0) {
+        log.error('MINT_URLS contains no valid URLs, exiting...')
         process.exit(1)
     }
 
@@ -24,8 +30,8 @@ app.listen({
     }
 
     log.info('Minibits Ippon started', {
-        mint: process.env.MINT_URL,
-        unit: process.env.UNIT || 'sat',
-        port: process.env.PORT || '3000',
+        mints: mintUrls,
+        unit:  process.env.UNIT || 'sat',
+        port:  process.env.PORT || '3000',
     })
 })

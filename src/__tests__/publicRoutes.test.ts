@@ -31,6 +31,7 @@ vi.mock('../utils/prismaClient', () => ({
 
 vi.mock('../services/walletService', () => ({
     WalletService: {
+        getMintUrls: vi.fn().mockReturnValue(['https://testmint.example.com']),
         receiveToken: mocks.receiveToken,
         getProofsAmount: mocks.getProofsAmount,
         getWalletBalance: vi.fn().mockResolvedValue({ balance: 0, pendingBalance: 0 }),
@@ -84,7 +85,7 @@ describe('GET /v1/info', () => {
         const body = res.json()
         expect(body.status).toBe('operational')
         expect(body.unit).toBe('sat')
-        expect(body.mint).toBe('https://testmint.example.com')
+        expect(body.mints).toEqual(['https://testmint.example.com'])
         expect(body.limits.max_balance).toBe(100000)
         expect(body.limits.max_send).toBe(50000)
         expect(body.limits.max_pay).toBe(50000)
@@ -133,7 +134,7 @@ describe('POST /v1/wallet', () => {
         expect(res.statusCode).toBe(200)
         const body = res.json()
         expect(body.balance).toBe(100)
-        expect(mocks.receiveToken).toHaveBeenCalledWith(CREATED_WALLET.id, 'cashuBtest')
+        expect(mocks.receiveToken).toHaveBeenCalledWith(CREATED_WALLET.id, 'cashuBtest', CREATED_WALLET.mint)
     })
 
     it('rejects token that exceeds max balance', async () => {

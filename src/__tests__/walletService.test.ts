@@ -119,7 +119,7 @@ describe('WalletService.syncProofsStateWithMint', () => {
 
     it('returns zeros when no pending proofs exist', async () => {
         mocks.prismaProofFindMany.mockResolvedValue([])
-        const result = await WalletService.syncProofsStateWithMint(1)
+        const result = await WalletService.syncProofsStateWithMint(1, 'https://testmint.example.com')
         expect(result).toEqual({ spent: 0, pending: 0, unspent: 0 })
         expect(mocks.walletCheckProofsStates).not.toHaveBeenCalled()
     })
@@ -132,7 +132,7 @@ describe('WalletService.syncProofsStateWithMint', () => {
             { state: CheckStateEnum.SPENT },
         ])
 
-        const result = await WalletService.syncProofsStateWithMint(1)
+        const result = await WalletService.syncProofsStateWithMint(1, 'https://testmint.example.com')
         expect(result.spent).toBe(2)
         expect(result.unspent).toBe(0)
         expect(mocks.prismaProofUpdateMany).toHaveBeenCalledWith({
@@ -149,7 +149,7 @@ describe('WalletService.syncProofsStateWithMint', () => {
             { state: CheckStateEnum.UNSPENT },
         ])
 
-        const result = await WalletService.syncProofsStateWithMint(1)
+        const result = await WalletService.syncProofsStateWithMint(1, 'https://testmint.example.com')
         expect(result.unspent).toBe(2)
         expect(result.spent).toBe(0)
         expect(mocks.prismaProofUpdateMany).toHaveBeenCalledWith({
@@ -162,7 +162,7 @@ describe('WalletService.syncProofsStateWithMint', () => {
         mocks.prismaProofFindMany.mockResolvedValue([makeDbProof('s1')])
         mocks.walletCheckProofsStates.mockResolvedValue([{ state: CheckStateEnum.PENDING }])
 
-        const result = await WalletService.syncProofsStateWithMint(1)
+        const result = await WalletService.syncProofsStateWithMint(1, 'https://testmint.example.com')
         expect(result).toEqual({ spent: 0, unspent: 0, pending: 1 })
         expect(mocks.prismaProofUpdateMany).not.toHaveBeenCalled()
     })
@@ -176,7 +176,7 @@ describe('WalletService.syncProofsStateWithMint', () => {
             { state: CheckStateEnum.PENDING },
         ])
 
-        const result = await WalletService.syncProofsStateWithMint(1)
+        const result = await WalletService.syncProofsStateWithMint(1, 'https://testmint.example.com')
         expect(result).toEqual({ spent: 1, unspent: 1, pending: 1 })
     })
 })
@@ -192,7 +192,7 @@ describe('WalletService.sendProofs', () => {
     it('throws VALIDATION_ERROR when balance insufficient', async () => {
         mocks.prismaProofFindMany.mockResolvedValue([makeDbProof('s1', 50)])
 
-        await expect(WalletService.sendProofs(WALLET_ID, 100))
+        await expect(WalletService.sendProofs(WALLET_ID, 100, 'https://testmint.example.com'))
             .rejects.toMatchObject({ name: 'VALIDATION_ERROR' })
     })
 
@@ -206,7 +206,7 @@ describe('WalletService.sendProofs', () => {
         mocks.prismaProofUpdateMany.mockResolvedValue({})
 
         const pubkey = '02' + '79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'
-        await WalletService.sendProofs(WALLET_ID, 100, pubkey)
+        await WalletService.sendProofs(WALLET_ID, 100, 'https://testmint.example.com', pubkey)
 
         expect(mocks.walletSend).toHaveBeenCalledWith(
             100,
@@ -225,7 +225,7 @@ describe('WalletService.sendProofs', () => {
         mocks.prismaProofCreate.mockResolvedValue({})
         mocks.prismaProofUpdateMany.mockResolvedValue({})
 
-        await WalletService.sendProofs(WALLET_ID, 100)
+        await WalletService.sendProofs(WALLET_ID, 100, 'https://testmint.example.com')
 
         expect(mocks.walletSend).toHaveBeenCalledWith(
             100, expect.any(Array), { includeFees: true }, undefined,
@@ -259,7 +259,7 @@ describe('WalletService.meltProofs — error handling', () => {
             change: [makeProof('change1', 5)],
         })
 
-        const result = await WalletService.meltProofs(WALLET_ID, MELT_QUOTE)
+        const result = await WalletService.meltProofs(WALLET_ID, MELT_QUOTE, 'https://testmint.example.com')
         expect(result.quote.state).toBe(MeltQuoteState.PAID)
         expect(mocks.prismaProofUpdateMany).toHaveBeenCalledWith(
             expect.objectContaining({ data: { status: ProofStatus.SPENT } })
@@ -277,7 +277,7 @@ describe('WalletService.meltProofs — error handling', () => {
             ...MELT_QUOTE, state: MeltQuoteState.PENDING,
         })
 
-        await expect(WalletService.meltProofs(WALLET_ID, MELT_QUOTE))
+        await expect(WalletService.meltProofs(WALLET_ID, MELT_QUOTE, 'https://testmint.example.com'))
             .rejects.toMatchObject({ statusCode: 202, name: 'TIMEOUT_ERROR' })
     })
 
@@ -287,7 +287,7 @@ describe('WalletService.meltProofs — error handling', () => {
             ...MELT_QUOTE, state: MeltQuoteState.UNPAID,
         })
 
-        await expect(WalletService.meltProofs(WALLET_ID, MELT_QUOTE))
+        await expect(WalletService.meltProofs(WALLET_ID, MELT_QUOTE, 'https://testmint.example.com'))
             .rejects.toMatchObject({ statusCode: 500, name: 'CONNECTION_ERROR' })
 
         expect(mocks.prismaProofUpdateMany).toHaveBeenCalledWith(
@@ -306,7 +306,7 @@ describe('WalletService.meltProofs — error handling', () => {
             .mockResolvedValueOnce([makeDbProof('s1', 1000)])
             .mockResolvedValueOnce([])
 
-        await expect(WalletService.meltProofs(WALLET_ID, MELT_QUOTE))
+        await expect(WalletService.meltProofs(WALLET_ID, MELT_QUOTE, 'https://testmint.example.com'))
             .rejects.toMatchObject({ statusCode: 202, name: 'TIMEOUT_ERROR' })
     })
 
@@ -321,7 +321,7 @@ describe('WalletService.meltProofs — error handling', () => {
             .mockResolvedValueOnce([makeDbProof('s1', 1000)])
             .mockResolvedValueOnce([makeDbProof('s1', 1000)])
 
-        await expect(WalletService.meltProofs(WALLET_ID, MELT_QUOTE))
+        await expect(WalletService.meltProofs(WALLET_ID, MELT_QUOTE, 'https://testmint.example.com'))
             .rejects.toMatchObject({ statusCode: 500, name: 'CONNECTION_ERROR' })
 
         expect(mocks.walletCheckProofsStates).toHaveBeenCalled()
@@ -331,7 +331,7 @@ describe('WalletService.meltProofs — error handling', () => {
         mocks.walletMeltProofsBolt11.mockRejectedValue(new Error('connection refused'))
         mocks.walletCheckMeltQuoteBolt11.mockRejectedValue(new Error('timeout'))
 
-        await expect(WalletService.meltProofs(WALLET_ID, MELT_QUOTE))
+        await expect(WalletService.meltProofs(WALLET_ID, MELT_QUOTE, 'https://testmint.example.com'))
             .rejects.toMatchObject({ statusCode: 500, name: 'CONNECTION_ERROR' })
     })
 })
