@@ -200,15 +200,36 @@ const sendProofs = async function (walletId: number, amount: number, mintUrl: st
 }
 
 
+const SWAP_BATCH_SIZE = 100
+
 const receiveToken = async function (walletId: number, tokenStr: string, mintUrl: string): Promise<Proof[]> {
     const decoded = getDecodedToken(tokenStr)
     if (decoded.mint !== mintUrl) {
         throw new AppError(400, Err.VALIDATION_ERROR, `Token mint '${decoded.mint}' does not match wallet mint '${mintUrl}'`, { caller: 'receiveToken' })
     }
     const wallet = await getWallet(mintUrl)
-    const newProofs = await wallet.receive(tokenStr)
-    await saveProofs(walletId, newProofs, ProofStatus.UNSPENT)
-    return newProofs
+
+    if (decoded.proofs.length <= SWAP_BATCH_SIZE) {
+        const newProofs = await wallet.receive(tokenStr)
+        await saveProofs(walletId, newProofs, ProofStatus.UNSPENT)
+        return newProofs
+    }
+
+    // Swap in batches to stay within the mint's per-swap proof limit
+    const allNewProofs: Proof[] = []
+    for (let i = 0; i < decoded.proofs.length; i += SWAP_BATCH_SIZE) {
+        const batchToken: Token = {
+            mint: decoded.mint,
+            proofs: decoded.proofs.slice(i, i + SWAP_BATCH_SIZE),
+            unit: decoded.unit,
+        }
+        const preview = await wallet.prepareSwapToReceive(batchToken)
+        const { keep } = await wallet.completeSwap(preview)
+        allNewProofs.push(...keep)
+    }
+
+    await saveProofs(walletId, allNewProofs, ProofStatus.UNSPENT)
+    return allNewProofs
 }
 
 
