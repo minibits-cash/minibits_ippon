@@ -30,7 +30,7 @@ const getWallet = async function (mintUrl: string): Promise<Wallet> {
 
     const unit = process.env.UNIT || 'sat'
 
-    log.debug('[getWallet] Creating new wallet instance', { mintUrl, unit })
+    log.debug('[getWallet] Creating new cashu-ts wallet instance', { mintUrl, unit })
 
     const cashuWallet = new Wallet(mintUrl, { unit })
     await cashuWallet.loadMint()

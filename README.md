@@ -2,7 +2,7 @@
 
 Ippon (一本, "one point", "decisive victory")
 
-Minibits Ippon is a minimalistic, API-driven ecash and Lightning wallet implementing the Cashu protocol.
+Minibits Ippon is a minimalistic ecash and Lightning wallet implementing the Cashu protocol. It can be operated as a **REST API server** (for hosted deployments and AI agents connecting over HTTP) or as a **local CLI** (for AI agents that install and control it directly via standard I/O).
 
 > ### Try it out
 > A live Ippon instance is running at **ippon.minibits.cash**:
@@ -34,8 +34,8 @@ Ippon supports one or more Cashu mints configured via the `MINT_URLS` environmen
 AI agents lack reliable long-term secret storage. Ippon wallets are expected to be short-lived, hold minimal balances, and should be emptied upon session completion. Seed-based wallets introduce unnecessary complexity and operational burden that neither agents nor wallet operators really need.
 
 ### No UI
-    
-The wallet exposes a very simple REST API with verbose, intuitive route and parameter names that hide ecash internals where possible. To make consuming the API by AI agents more natural, ippon_mcp project provides MCP server facade.
+
+The wallet exposes a very simple REST API with verbose, intuitive route and parameter names that hide ecash internals where possible. To make consuming the API by AI agents more natural, the ippon_mcp project provides an MCP server facade. Alternatively, operators can run Ippon in **CLI mode** (`INTERACTION_MODE=cli`) where the wallet is controlled through standard I/O commands — useful for AI agents that can install and spawn a local process instead of connecting to a hosted server.
 
 ### Short-term security guarantees
     
@@ -238,6 +238,95 @@ curl -X GET http://localhost:3001/v1/rate/USD \
   -H "Authorization: Bearer abc123_access_key"
 ```
 
+## CLI Mode
+
+CLI mode is intended for **local, self-hosted use** — typically by an AI agent that installs Ippon and interacts with it via standard I/O instead of HTTP. Data is stored in a local SQLite file; no PostgreSQL or network server is required.
+
+### How it works
+
+- `INTERACTION_MODE=cli` — starts a readline REPL instead of an HTTP server.
+- `DATABASE_ENGINE=sqlite` — stores data in a local file (`DATABASE_FILE_PATH`, default `~/.ippon/database.sqlite`).
+- **All responses are JSON lines on stdout**; the prompt (`> `) and info messages go to stderr so they don't interfere with programmatic parsing.
+- Wallet access keys are short 6-character alphanumeric strings displayed as `xxx-xxx` (e.g. `adg-08m`). Both formats (`adg08m` and `adg-08m`) are accepted as input.
+
+### Quick start
+
+```bash
+# 1. Install dependencies
+yarn install
+
+# 2. Copy and configure environment
+cp .env.example .env
+# Set DATABASE_ENGINE=sqlite, INTERACTION_MODE=cli, MINT_URLS, UNIT, limits, etc.
+
+# 3. Build
+yarn build
+
+# 4. Set up SQLite schema (run once, and again after switching engines)
+yarn db:setup
+
+# 5. Start the CLI
+DATABASE_ENGINE=sqlite INTERACTION_MODE=cli node dist/index.js
+# or, combining steps 4 and 5:
+yarn start:local
+```
+
+### Commands
+
+All commands are typed at the `> ` prompt (or piped via stdin). Every response is a single JSON object on stdout.
+
+| Command | Description |
+|---|---|
+| `info` | Service info: mints, unit, global limits |
+| `wallet create [name] [mint_url]` | Create a new wallet; mint must be in `MINT_URLS`; prints `access_key` |
+| `wallet list` | List all wallets with balances |
+| `wallet <key> balance` | Show wallet balance and details |
+| `wallet <key> deposit <amount>` | Create a Lightning invoice to fund the wallet |
+| `wallet <key> deposit-check <quote_id>` | Check deposit status; auto-mints ecash when paid |
+| `wallet <key> send <amount> [lock_pubkey]` | Export a Cashu token (optionally P2PK-locked) |
+| `wallet <key> receive <token>` | Import a Cashu token |
+| `wallet <key> pay <bolt11\|ln_address> [amount]` | Pay a Lightning invoice or Lightning address |
+| `wallet <key> pay-check <quote_id>` | Check payment status |
+| `wallet <key> sync` | Sync pending proofs with the mint |
+| `decode <data>` | Decode a Cashu token, Cashu request, or BOLT11 invoice |
+| `help` | Show available commands |
+| `exit` | Quit |
+
+### Example session
+
+```
+> wallet create agent-session-1
+{"access_key":"adg-08m","name":"agent-session-1","mint":"https://mint.minibits.cash/Bitcoin","unit":"sat","balance":0,"pending_balance":0}
+
+> wallet adg-08m deposit 100
+{"quote":"abc123...","request":"lnbc1000n...","state":"UNPAID","expiry":1234567890}
+
+> wallet adg-08m deposit-check abc123...
+{"quote":"abc123...","request":"lnbc1000n...","state":"PAID","expiry":1234567890}
+
+> wallet adg-08m balance
+{"access_key":"adg-08m","name":"agent-session-1","mint":"https://mint.minibits.cash/Bitcoin","unit":"sat","balance":100,"pending_balance":0}
+
+> wallet adg-08m pay lnbc500n...
+{"quote":"xyz987...","amount":50,"fee_reserve":1,"state":"PAID","payment_preimage":"...","expiry":1234567890}
+```
+
+### Piping commands (non-interactive)
+
+Each command can be piped as a single stdin line; the process exits cleanly after completing it:
+
+```bash
+# Create a wallet and capture the access key
+KEY=$(echo "wallet create bot" | DATABASE_ENGINE=sqlite INTERACTION_MODE=cli LOG_LEVEL=error node dist/index.js 2>/dev/null \
+  | node -e "process.stdin.setEncoding('utf8');let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).access_key))")
+
+# Receive a token
+echo "wallet $KEY receive cashuB..." | DATABASE_ENGINE=sqlite INTERACTION_MODE=cli LOG_LEVEL=error node dist/index.js 2>/dev/null
+
+# Pay an invoice
+echo "wallet $KEY pay lnbc..." | DATABASE_ENGINE=sqlite INTERACTION_MODE=cli LOG_LEVEL=error node dist/index.js 2>/dev/null
+```
+
 ## API Reference
 
 The full interactive API reference — including all request bodies, response schemas, and enum values — is served directly by the running Ippon instance:
@@ -253,42 +342,62 @@ All request and response TypeScript types used in the route tables above are def
 
 ## Development
 
-Minibits Ippon is written in TypeScript and runs on Node.js (v24+). It uses Fastify as the HTTP server, and Prisma ORM for PostgreSQL.
+Minibits Ippon is written in TypeScript and runs on Node.js (v24+). It uses Fastify as the HTTP server and Prisma ORM with either PostgreSQL (API/server mode) or SQLite (CLI/local mode).
 
 ### Prerequisites
 
+**API mode (hosted)**
 - Node.js v24+
 - PostgreSQL
-- A running Cashu mint (e.g. [Nutshell](https://github.com/cashubtc/nutshell) or [cdk-mintd](https://github.com/cashubtc/cdk/tree/main/crates/cdk-mintd))
+- A running Cashu mint
+
+**CLI mode (local)**
+- Node.js v24+
+- A running Cashu mint (public mints work; no self-hosted infrastructure needed)
 
 ### Setup
 
+#### API mode (PostgreSQL)
+
 ```bash
-# Install dependencies
 yarn install
-
-# Copy and configure environment
 cp .env.example .env
-# Edit .env — set DATABASE_URL, MINT_URLS, UNIT, limits, etc.
+# Edit .env: set DATABASE_ENGINE=postgresql, DATABASE_URL, INTERACTION_MODE=api, MINT_URLS, etc.
 
-# Create database and apply schema
-npx prisma migrate dev --name init
-
-# Generate Prisma client
-npx prisma generate
+yarn db:setup     # copies schema, runs prisma generate + db push
+yarn build
+yarn start:prod
 ```
+
+#### CLI mode (SQLite)
+
+```bash
+yarn install
+cp .env.example .env
+# Edit .env: set DATABASE_ENGINE=sqlite, INTERACTION_MODE=cli, MINT_URLS, etc.
+# DATABASE_FILE_PATH defaults to ~/.ippon/database.sqlite
+
+yarn db:setup     # creates ~/.ippon/, copies schema, runs prisma generate + db push
+yarn build
+yarn start:local  # db:setup + CLI start combined
+```
+
+> **Switching engines:** re-run `yarn db:setup` after changing `DATABASE_ENGINE`. This regenerates the Prisma client for the new engine.
 
 ### Running
 
 ```bash
-# Development (auto-reload)
+# Development (auto-reload, reads INTERACTION_MODE from .env)
 yarn start:dev
 
 # Production build
 yarn build
 
-# Production start
+# Production start (API or CLI depending on .env)
 yarn start:prod
+
+# One-shot local CLI (sets up SQLite and starts the REPL)
+yarn start:local
 ```
 
 ### Testing
@@ -316,20 +425,25 @@ All external I/O (Prisma, cashu-ts `Wallet`, `getEncodedTokenV4`, fetch) is mock
 
 | Variable | Description | Default |
 |---|---|---|
-| `DATABASE_URL` | PostgreSQL connection string | — |
-| `PORT` | HTTP server port | `3001` |
+| `DATABASE_ENGINE` | Database backend: `postgresql` or `sqlite` | `postgresql` |
+| `DATABASE_URL` | PostgreSQL connection string (required when `DATABASE_ENGINE=postgresql`) | — |
+| `DATABASE_FILE_PATH` | SQLite file path, supports `~` expansion (used when `DATABASE_ENGINE=sqlite`) | `~/.ippon/database.sqlite` |
+| `INTERACTION_MODE` | Runtime mode: `api` (HTTP server) or `cli` (stdio REPL) | `api` |
+| `PORT` | HTTP server port (API mode only) | `3001` |
 | `LOG_LEVEL` | Log verbosity (`trace`, `debug`, `info`, `warn`, `error`) | `debug` |
 | `MINT_URLS` | Comma-separated list of supported Cashu mint URLs. First entry is the default. | — |
 | `UNIT` | Wallet unit (`sat` or `msat`) | `sat` |
 | `MAX_BALANCE` | Global max wallet balance (in unit) | `100000` |
 | `MAX_SEND` | Global max ecash send amount | `50000` |
 | `MAX_PAY` | Global max Lightning payment amount | `50000` |
-| `SERVICE_STATUS` | Status string returned by `/v1/info` | `operational` |
-| `SERVICE_HELP` | Help URL returned by `/v1/info` | — |
-| `SERVICE_TERMS` | Terms URL returned by `/v1/info` | — |
-| `RATE_LIMIT_MAX` | Default max requests per window (global); exposed via `GET /v1/info` | `100` |
-| `RATE_LIMIT_CREATE_WALLET_MAX` | Max wallet creations per window per IP; exposed via `GET /v1/info` | `3` |
-| `RATE_LIMIT_WINDOW` | Rate-limit time window; exposed via `GET /v1/info` | `1 minute` |
+| `SERVICE_STATUS` | Status string returned by `/v1/info` (API mode) | `operational` |
+| `SERVICE_HELP` | Help URL returned by `/v1/info` (API mode) | — |
+| `SERVICE_TERMS` | Terms URL returned by `/v1/info` (API mode) | — |
+| `RATE_LIMIT_MAX` | Default max requests per window (API mode) | `100` |
+| `RATE_LIMIT_CREATE_WALLET_MAX` | Max wallet creations per window per IP (API mode) | `3` |
+| `RATE_LIMIT_WINDOW` | Rate-limit time window (API mode) | `1 minute` |
+
+All configured values are printed to **stderr** at startup regardless of mode, making it easy to verify the active configuration.
 
 ### MCP server
 

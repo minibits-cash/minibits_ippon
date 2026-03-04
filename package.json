@@ -9,6 +9,8 @@
     "start:prod": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
+    "db:setup": "node scripts/db-setup.mjs",
+    "start:local": "DATABASE_ENGINE=sqlite INTERACTION_MODE=cli node scripts/db-setup.mjs && DATABASE_ENGINE=sqlite INTERACTION_MODE=cli node dist/index.js",
     "prisma:updateTypes": "npx prisma generate",
     "prisma:updateDb": "npx prisma db push"
   },
