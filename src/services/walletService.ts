@@ -48,6 +48,11 @@ const getProofsAmount = function (proofs: Array<Proof>): number {
     return totalAmount
 }
 
+const getTokenAmount = function (tokenStr: string): number {
+    const decoded = getDecodedToken(tokenStr)
+    return getProofsAmount(decoded.proofs)
+}
+
 
 const getWalletBalance = async function (walletId: number): Promise<{ balance: number, pendingBalance: number }> {
     const unspentResult = await prisma.proof.aggregate({
@@ -411,6 +416,7 @@ export const WalletService = {
     getMintUrls,
     getWallet,
     getProofsAmount,
+    getTokenAmount,
     getWalletBalance,
     saveProofs,
     loadProofs,

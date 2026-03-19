@@ -151,22 +151,18 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
 
         // If a token was provided, receive it immediately
         if (token) {
+            const maxBalance = wallet.maxBalance ?? parseInt(process.env.MAX_BALANCE || '100000')
+            const tokenAmount = WalletService.getTokenAmount(token)
+            if (tokenAmount > maxBalance) {
+                await prisma.wallet.delete({ where: { id: wallet.id } })
+                throw new AppError(400, Err.LIMIT_ERROR, `Token amount ${tokenAmount} exceeds max balance ${maxBalance}`, { caller: 'CreateWallet' })
+            }
+
             try {
                 const newProofs = await WalletService.receiveToken(wallet.id, token, resolvedMintUrl)
-                const amount = WalletService.getProofsAmount(newProofs)
-                const maxBalance = wallet.maxBalance ?? parseInt(process.env.MAX_BALANCE || '100000')
-
-                if (amount > maxBalance) {
-                    // Clean up: delete proofs and wallet
-                    await prisma.proof.deleteMany({ where: { walletId: wallet.id } })
-                    await prisma.wallet.delete({ where: { id: wallet.id } })
-                    throw new AppError(400, Err.LIMIT_ERROR, `Token amount ${amount} exceeds max balance ${maxBalance}`, { caller: 'CreateWallet' })
-                }
-
-                balance = amount
+                balance = WalletService.getProofsAmount(newProofs)
             } catch (e: any) {
                 if (e instanceof AppError) throw e
-                // Clean up wallet on receive failure
                 await prisma.wallet.delete({ where: { id: wallet.id } })
                 throw new AppError(400, Err.VALIDATION_ERROR, `Failed to receive initial token: ${e.message}`, { caller: 'CreateWallet' })
             }
