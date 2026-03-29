@@ -184,6 +184,11 @@ async function handleCommand(parts: string[]): Promise<void> {
         // balance
         if (op === 'balance') {
             try {
+                try {
+                    await WalletService.syncProofsStateWithMint(wallet.id, wallet.mint)
+                } catch (e: any) {
+                    log.warn('[CLI balance] pending proof sync failed', { error: e.message })
+                }
                 const { balance, pendingBalance } = await WalletService.getWalletBalance(wallet.id)
                 out({
                     access_key:      formatKey(wallet.accessKey),

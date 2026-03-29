@@ -93,7 +93,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
     // GET /v1/wallet
     instance.get('/wallet', {
         schema: {
-            description: 'Get the current wallet details including name, unit, mint, confirmed balance, and pending balance.',
+            description: 'Get the current wallet details including name, unit, mint, confirmed balance, and pending balance. Any pending proofs are checked against the mint first and their state updated before the balances are calculated.',
             tags: ['Wallet'],
             security: BEARER,
             response: {
@@ -121,6 +121,13 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
         },
     }, async (req: FastifyRequest, res: FastifyReply): Promise<WalletResponse> => {
         const wallet = getAuthWallet(req)
+
+        try {
+            await WalletService.syncProofsStateWithMint(wallet.id, wallet.mint)
+        } catch (e: any) {
+            log.warn('GET /v1/wallet - pending proof sync failed', { walletId: wallet.id, error: e.message, reqId: req.id })
+        }
+
         const { balance, pendingBalance } = await WalletService.getWalletBalance(wallet.id)
 
         log.info('GET /v1/wallet', { walletId: wallet.id, reqId: req.id })

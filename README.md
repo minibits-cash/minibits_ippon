@@ -85,7 +85,7 @@ curl -X POST http://localhost:3001/v1/wallet \
 
 ### GET /v1/wallet
 
-Retrieves details of the current wallet, including its name, unit, mint, confirmed balance, and pending balance.
+Retrieves details of the current wallet, including its name, unit, mint, confirmed balance, and pending balance. Any pending proofs are checked against the mint first and their state updated before the balances are returned.
 
 | Authorization          | Request Type | Response Type  |
 |------------------------|--------------|----------------|
@@ -280,7 +280,7 @@ All commands are typed at the `> ` prompt (or piped via stdin). Every response i
 | `info` | Service info: mints, unit, global limits |
 | `wallet create [name] [mint_url]` | Create a new wallet; mint must be in `MINT_URLS`; prints `access_key` |
 | `wallet list` | List all wallets with balances |
-| `wallet <key> balance` | Show wallet balance and details |
+| `wallet <key> balance` | Show wallet balance and details; auto-syncs pending proofs with the mint first |
 | `wallet <key> deposit <amount>` | Create a Lightning invoice to fund the wallet |
 | `wallet <key> deposit-check <quote_id>` | Check deposit status; auto-mints ecash when paid |
 | `wallet <key> send <amount> [lock_pubkey]` | Export a Cashu token (optionally P2PK-locked) |
