@@ -341,7 +341,7 @@ echo "wallet $KEY receive cashuB..." | DATABASE_ENGINE=sqlite INTERACTION_MODE=c
 echo "wallet $KEY pay lnbc..." | DATABASE_ENGINE=sqlite INTERACTION_MODE=cli LOG_LEVEL=error node dist/index.js 2>/dev/null
 ```
 
-### Environment variables
+## Environment variables
 
 | Variable | Description | Default |
 |---|---|---|
