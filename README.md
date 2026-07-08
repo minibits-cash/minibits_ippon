@@ -16,12 +16,12 @@ Minibits Ippon is a minimalistic ecash and Lightning wallet implementing the Cas
 >
 > - `eaqmg2oqhay5btz5v75bgknfb3x4q4vesfijjzvgkbgocn5fvhkntwad.onion`
 >
-> ⚠️ **This instance is provided for testing and evaluation purposes only. It is an alpha software, use it at your own risk, with small amounts only. Do not store funds you cannot afford to lose.**
+> ⚠️ **This instance is provided for research, development and testing and evaluation purposes only. It is an alpha software, use it at your own risk, with small amounts only. Do not store funds you cannot afford to lose.**
 
 
 Ippon is designed primarily for non-human systems — especially AI agents — that require instant, automated capability to receive and send micropayments without human intervention.
 
-Minibits Ippon is intended for server-side deployment, ideally by a Cashu mint operator as a complementary service to their mint. It is therefore a fully custodial solution optimized for short-lived, single-purpose wallets with low balances.
+Minibits Ippon is intended both for server-side and local deployment, optimized for short-lived, single-purpose wallets with low balances.
 
 To minimize complexity and provide an extremely simple API that AI agents can easily understand and use, Ippon adheres to strict design constraints:
 
@@ -33,9 +33,9 @@ Ippon supports one or more Cashu mints configured via the `MINT_URLS` environmen
     
 AI agents lack reliable long-term secret storage. Ippon wallets are expected to be short-lived, hold minimal balances, and should be emptied upon session completion. Seed-based wallets introduce unnecessary complexity and operational burden that neither agents nor wallet operators really need.
 
-### No UI
+### Server-side REST API or local CLI mode
 
-The wallet exposes a very simple REST API with verbose, intuitive route and parameter names that hide ecash internals where possible. To make consuming the API by AI agents more natural, the ippon_mcp project provides an MCP server facade. Alternatively, operators can run Ippon in **CLI mode** (`INTERACTION_MODE=cli`) where the wallet is controlled through standard I/O commands — useful for AI agents that can install and spawn a local process instead of connecting to a hosted server.
+The wallet exposes a very simple REST with verbose, intuitive names that hide ecash internals where possible. To make consuming the API by AI agents more natural, the ippon_mcp project provides an MCP server facade. Alternatively, operators or  AI agents can install and run Ippon in **CLI mode** (`INTERACTION_MODE=cli`) where the wallet is controlled through standard I/O commands — useful for AI agents that can install and spawn a local process instead of relying on a hosted instance.
 
 ### Short-term security guarantees
     
@@ -50,9 +50,9 @@ Due to the above constraints, the primary safeguard is a combination of rate lim
 -   Optional per-wallet balance and payment limits defined at wallet creation time. This prevents funding or outgoing payments from exceeding intended task scope.
     
 
-## Wallet API
+## Server mode - REST API
 
-The API is versioned under `/v1/` and uses standard HTTP methods with JSON payloads.  
+The API isto be used in server-side deployments and is versioned under `/v1/`, using standard HTTP methods with JSON payloads.  
 All authenticated endpoints require a `Bearer access_key` in the `Authorization` header (except wallet creation and public info).
 
 ### GET /v1/info
@@ -238,7 +238,21 @@ curl -X GET http://localhost:3001/v1/rate/USD \
   -H "Authorization: Bearer abc123_access_key"
 ```
 
-## CLI Mode
+## API Reference
+
+The full interactive API reference — including all request bodies, response schemas, and enum values — is served directly by the running Ippon instance:
+
+- **Swagger UI** (interactive): `GET /v1/`
+- **Raw OpenAPI 3.0 JSON**: `GET /v1/json`
+
+The spec is generated at runtime from the route definitions and is always in sync with the code.
+
+All request and response TypeScript types used in the route tables above are defined in [`src/routes/routeTypes.ts`](src/routes/routeTypes.ts).
+
+> **Note on amounts:** Despite the wallet operating with a single unit, amounts are always declared together with `unit` to keep values unambiguous (`unit` must always equal the wallet's configured `MintUnit`).
+
+
+## Local mode - CLI commands
 
 CLI mode is intended for **local, self-hosted use** — typically by an AI agent that installs Ippon and interacts with it via standard I/O instead of HTTP. Data is stored in a local SQLite file; no PostgreSQL or network server is required.
 
@@ -327,18 +341,6 @@ echo "wallet $KEY receive cashuB..." | DATABASE_ENGINE=sqlite INTERACTION_MODE=c
 echo "wallet $KEY pay lnbc..." | DATABASE_ENGINE=sqlite INTERACTION_MODE=cli LOG_LEVEL=error node dist/index.js 2>/dev/null
 ```
 
-## API Reference
-
-The full interactive API reference — including all request bodies, response schemas, and enum values — is served directly by the running Ippon instance:
-
-- **Swagger UI** (interactive): `GET /v1/`
-- **Raw OpenAPI 3.0 JSON**: `GET /v1/json`
-
-The spec is generated at runtime from the route definitions and is always in sync with the code.
-
-All request and response TypeScript types used in the route tables above are defined in [`src/routes/routeTypes.ts`](src/routes/routeTypes.ts).
-
-> **Note on amounts:** Despite the wallet operating with a single unit, amounts are always declared together with `unit` to keep values unambiguous (`unit` must always equal the wallet's configured `MintUnit`).
 
 ## Development
 
@@ -346,18 +348,18 @@ Minibits Ippon is written in TypeScript and runs on Node.js (v24+). It uses Fast
 
 ### Prerequisites
 
-**API mode (hosted)**
+**Server REST API mode**
 - Node.js v24+
 - PostgreSQL
 - A running Cashu mint
 
-**CLI mode (local)**
+**Local CLI mode**
 - Node.js v24+
 - A running Cashu mint (public mints work; no self-hosted infrastructure needed)
 
 ### Setup
 
-#### API mode (PostgreSQL)
+#### Server REST API mode (PostgreSQL)
 
 ```bash
 yarn install
@@ -369,7 +371,7 @@ yarn build
 yarn start:prod
 ```
 
-#### CLI mode (SQLite)
+#### Local CLI mode (SQLite)
 
 ```bash
 yarn install
