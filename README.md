@@ -341,6 +341,30 @@ echo "wallet $KEY receive cashuB..." | DATABASE_ENGINE=sqlite INTERACTION_MODE=c
 echo "wallet $KEY pay lnbc..." | DATABASE_ENGINE=sqlite INTERACTION_MODE=cli LOG_LEVEL=error node dist/index.js 2>/dev/null
 ```
 
+### Environment variables
+
+| Variable | Description | Default |
+|---|---|---|
+| `DATABASE_ENGINE` | Database backend: `postgresql` or `sqlite` | `postgresql` |
+| `DATABASE_URL` | PostgreSQL connection string (required when `DATABASE_ENGINE=postgresql`) | — |
+| `DATABASE_FILE_PATH` | SQLite file path, supports `~` expansion (used when `DATABASE_ENGINE=sqlite`) | `~/.ippon/database.sqlite` |
+| `INTERACTION_MODE` | Runtime mode: `api` (HTTP server) or `cli` (stdio REPL) | `api` |
+| `PORT` | HTTP server port (API mode only) | `3001` |
+| `LOG_LEVEL` | Log verbosity (`trace`, `debug`, `info`, `warn`, `error`) | `debug` |
+| `MINT_URLS` | Comma-separated list of supported Cashu mint URLs. First entry is the default. | — |
+| `UNIT` | Wallet unit (`sat` or `msat`) | `sat` |
+| `MAX_BALANCE` | Global max wallet balance (in unit) | `100000` |
+| `MAX_SEND` | Global max ecash send amount | `50000` |
+| `MAX_PAY` | Global max Lightning payment amount | `50000` |
+| `SERVICE_STATUS` | Status string returned by `/v1/info` (API mode only) | `operational` |
+| `SERVICE_HELP` | Help URL returned by `/v1/info` (API mode only) | — |
+| `SERVICE_TERMS` | Terms URL returned by `/v1/info` (API mode only) | — |
+| `RATE_LIMIT_MAX` | Default max requests per window (API mode only) | `100` |
+| `RATE_LIMIT_CREATE_WALLET_MAX` | Max wallet creations per window per IP (API mode only) | `3` |
+| `RATE_LIMIT_WINDOW` | Rate-limit time window (API mode only) | `1 minute` |
+
+All configured values are printed to **stderr** at startup regardless of mode, making it easy to verify the active configuration.
+
 
 ## Development
 
@@ -422,30 +446,6 @@ yarn test:watch
 ```
 
 All external I/O (Prisma, cashu-ts `Wallet`, `getEncodedTokenV4`, fetch) is mocked; no database or mint connection is required.
-
-### Environment variables
-
-| Variable | Description | Default |
-|---|---|---|
-| `DATABASE_ENGINE` | Database backend: `postgresql` or `sqlite` | `postgresql` |
-| `DATABASE_URL` | PostgreSQL connection string (required when `DATABASE_ENGINE=postgresql`) | — |
-| `DATABASE_FILE_PATH` | SQLite file path, supports `~` expansion (used when `DATABASE_ENGINE=sqlite`) | `~/.ippon/database.sqlite` |
-| `INTERACTION_MODE` | Runtime mode: `api` (HTTP server) or `cli` (stdio REPL) | `api` |
-| `PORT` | HTTP server port (API mode only) | `3001` |
-| `LOG_LEVEL` | Log verbosity (`trace`, `debug`, `info`, `warn`, `error`) | `debug` |
-| `MINT_URLS` | Comma-separated list of supported Cashu mint URLs. First entry is the default. | — |
-| `UNIT` | Wallet unit (`sat` or `msat`) | `sat` |
-| `MAX_BALANCE` | Global max wallet balance (in unit) | `100000` |
-| `MAX_SEND` | Global max ecash send amount | `50000` |
-| `MAX_PAY` | Global max Lightning payment amount | `50000` |
-| `SERVICE_STATUS` | Status string returned by `/v1/info` (API mode) | `operational` |
-| `SERVICE_HELP` | Help URL returned by `/v1/info` (API mode) | — |
-| `SERVICE_TERMS` | Terms URL returned by `/v1/info` (API mode) | — |
-| `RATE_LIMIT_MAX` | Default max requests per window (API mode) | `100` |
-| `RATE_LIMIT_CREATE_WALLET_MAX` | Max wallet creations per window per IP (API mode) | `3` |
-| `RATE_LIMIT_WINDOW` | Rate-limit time window (API mode) | `1 minute` |
-
-All configured values are printed to **stderr** at startup regardless of mode, making it easy to verify the active configuration.
 
 ### MCP server
 
