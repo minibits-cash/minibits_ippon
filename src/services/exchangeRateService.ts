@@ -4,7 +4,7 @@ const SATOSHIS_PER_BTC = 100_000_000
 const RATE_FETCH_TIMEOUT_MS = 5000
 const RATE_CACHE_TTL_MS = 120_000 // 2 minutes
 
-export const SUPPORTED_CURRENCIES = ['usd', 'eur', 'cad', 'gbp'] as const
+export const SUPPORTED_CURRENCIES = ['usd', 'eur', 'cad', 'gbp', 'chf'] as const
 export type SupportedCurrency = typeof SUPPORTED_CURRENCIES[number]
 
 const COINGECKO_API_URL = 'https://api.coingecko.com/api/v3/simple/price'
