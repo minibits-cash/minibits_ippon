@@ -23,6 +23,12 @@ const limitsSchema = {
     },
 }
 
+// Roll back a freshly created wallet. Proofs reference the wallet row, so they go first.
+async function discardWallet(walletId: number) {
+    await prisma.proof.deleteMany({ where: { walletId } })
+    await prisma.wallet.delete({ where: { id: walletId } })
+}
+
 export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
 
     // GET /v1/info
@@ -154,7 +160,7 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
             const maxBalance = wallet.maxBalance ?? parseInt(process.env.MAX_BALANCE || '100000')
             const tokenAmount = WalletService.getTokenAmount(token)
             if (tokenAmount > maxBalance) {
-                await prisma.wallet.delete({ where: { id: wallet.id } })
+                await discardWallet(wallet.id)
                 throw new AppError(400, Err.LIMIT_ERROR, `Token amount ${tokenAmount} exceeds max balance ${maxBalance}`, { caller: 'CreateWallet' })
             }
 
@@ -163,7 +169,9 @@ export const publicRoutes: FastifyPluginCallback = (instance, opts, done) => {
                 balance = WalletService.getProofsAmount(newProofs)
             } catch (e: any) {
                 if (e instanceof AppError) throw e
-                await prisma.wallet.delete({ where: { id: wallet.id } })
+                // receiveToken persists each swap batch as it completes, so a partial failure can
+                // leave proofs behind. They must go before the wallet row they reference.
+                await discardWallet(wallet.id)
                 throw new AppError(400, Err.VALIDATION_ERROR, `Failed to receive initial token: ${e.message}`, { caller: 'CreateWallet' })
             }
         }

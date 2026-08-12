@@ -3,8 +3,7 @@ import readline from 'readline'
 import crypto from 'crypto'
 import {
     MintQuoteState,
-    getDecodedToken,
-    getEncodedTokenV4,
+    getEncodedToken,
     decodePaymentRequest,
 } from '@cashu/cashu-ts'
 import { decode as bolt11Decode } from '@gandlaf21/bolt11-decode'
@@ -91,7 +90,7 @@ async function handleCommand(parts: string[]): Promise<void> {
         if (!data) { cliError('Usage: decode <data>'); return }
         try {
             if (data.startsWith('cashu')) {
-                out({ type: 'CASHU_TOKEN', decoded: getDecodedToken(data) })
+                out({ type: 'CASHU_TOKEN', decoded: await WalletService.decodeToken(data) })
             } else if (data.startsWith('creq')) {
                 out({ type: 'CASHU_REQUEST', decoded: decodePaymentRequest(data) })
             } else {
@@ -240,7 +239,7 @@ async function handleCommand(parts: string[]): Promise<void> {
                 let p2pkPubkey: string | undefined
                 if (parts[4]) p2pkPubkey = NostrService.normalizePubkey(parts[4])
                 const { send } = await WalletService.sendProofs(wallet.id, amount, wallet.mint, p2pkPubkey)
-                const token = getEncodedTokenV4({ mint: wallet.mint, proofs: send, unit: wallet.unit })
+                const token = getEncodedToken({ mint: wallet.mint, proofs: send, unit: wallet.unit })
                 out({ token, amount: WalletService.getProofsAmount(send), unit: wallet.unit })
             } catch (e: any) { cliError(e.message) }
             return

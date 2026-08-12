@@ -4,8 +4,7 @@ import { FastifyRequest, FastifyPluginCallback, FastifyReply } from 'fastify'
 import {
     MintQuoteState,
     MeltQuoteState,
-    getDecodedToken,
-    getEncodedTokenV4,
+    getEncodedToken,
     CheckStateEnum,
     decodePaymentRequest,
 } from '@cashu/cashu-ts'
@@ -54,7 +53,7 @@ const depositQuoteProps = {
     quote:   { type: 'string' },
     request: { type: 'string', description: 'BOLT11 Lightning invoice' },
     state:   { type: 'string', enum: ['UNPAID', 'PAID', 'ISSUED', 'EXPIRED'] },
-    expiry:  { type: 'integer' },
+    expiry:  { type: 'integer', nullable: true, description: 'Null when the mint sets no expiry' },
 }
 
 // ── Helper to get the wallet from the request (attached by bearerAuthHandler)
@@ -191,7 +190,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
             quote: quote.quote,
             request: quote.request,
             state: quote.state,
-            expiry: quote.expiry,
+            expiry: quote.expiry ?? null,
         }
     })
 
@@ -225,7 +224,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
                 log.info('GET /v1/wallet/deposit/:quote - Minted proofs', {
                     walletId: wallet.id,
                     quoteId,
-                    amount: quote.amount,
+                    amount: quote.amount.toNumber(),
                     reqId: req.id,
                 })
             } catch (e: any) {
@@ -243,7 +242,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
             quote: quote.quote,
             request: quote.request,
             state: quote.state,
-            expiry: quote.expiry,
+            expiry: quote.expiry ?? null,
         }
     })
 
@@ -303,7 +302,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
 
         const { send } = await WalletService.sendProofs(wallet.id, amount, wallet.mint, p2pkPubkey)
 
-        const token = getEncodedTokenV4({
+        const token = getEncodedToken({
             mint: wallet.mint,
             proofs: send,
             memo,
@@ -448,7 +447,7 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
         switch (type) {
             case 'CASHU_TOKEN_V4':
             case 'CASHU_TOKEN_V3': {
-                decoded = getDecodedToken(data)
+                decoded = await WalletService.decodeToken(data)
                 break
             }
 
@@ -556,16 +555,16 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
         log.info('POST /v1/wallet/pay', {
             walletId: wallet.id,
             quoteId: meltResponse.quote.quote,
-            amount: meltResponse.quote.amount,
-            fee: meltResponse.quote.fee_reserve,
+            amount: meltResponse.quote.amount.toNumber(),
+            fee: meltResponse.quote.fee_reserve.toNumber(),
             state: meltResponse.quote.state,
             reqId: req.id,
         })
 
         return {
             quote: meltResponse.quote.quote,
-            amount: meltResponse.quote.amount,
-            fee_reserve: meltResponse.quote.fee_reserve,
+            amount: meltResponse.quote.amount.toNumber(),
+            fee_reserve: meltResponse.quote.fee_reserve.toNumber(),
             state: meltResponse.quote.state,
             payment_preimage: meltResponse.quote.payment_preimage,
             expiry: meltResponse.quote.expiry,
@@ -597,8 +596,8 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
 
         return {
             quote: quote.quote,
-            amount: quote.amount,
-            fee_reserve: quote.fee_reserve,
+            amount: quote.amount.toNumber(),
+            fee_reserve: quote.fee_reserve.toNumber(),
             state: quote.state,
             payment_preimage: quote.payment_preimage,
             expiry: quote.expiry,
@@ -642,9 +641,8 @@ export const protectedRoutes: FastifyPluginCallback = (instance, opts, done) => 
         const maxBalance = effectiveLimit(wallet.maxBalance, 'MAX_BALANCE', 100000)
         const { balance: currentBalance } = await WalletService.getWalletBalance(wallet.id)
 
-        // Decode token to check amount before receiving
-        const decoded = getDecodedToken(tokenStr)
-        const tokenAmount = WalletService.getProofsAmount(decoded.proofs)
+        // Read the token amount before receiving. Token metadata needs no keyset lookup.
+        const tokenAmount = WalletService.getTokenAmount(tokenStr)
 
         if (currentBalance + tokenAmount > maxBalance) {
             throw new AppError(400, Err.LIMIT_ERROR, `Receiving ${tokenAmount} would exceed max balance of ${maxBalance}`, { caller: 'Receive', reqId: req.id })

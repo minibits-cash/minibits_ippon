@@ -15,7 +15,7 @@
     "prisma:updateDb": "npx prisma db push"
   },
   "dependencies": {
-    "@cashu/cashu-ts": "3.4.1",
+    "@cashu/cashu-ts": "4.7.2",
     "@fastify/bearer-auth": "^10.1.1",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/swagger": "^9.7.0",
@@ -29,7 +29,6 @@
     "fastify": "^5.4.0",
     "nostr-tools": "2.19.4",
     "pg": "^8.16.3",
-    "pg-listen": "^1.7.0",
     "react-native-logs": "^5.3.0",
     "ws": "^8.18.3"
   },

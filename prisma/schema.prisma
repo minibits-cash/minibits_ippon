@@ -36,6 +36,7 @@ model Proof {
   secret    String      @unique
   C         String
   dleq      String?
+  p2pkE     String?
   witness   String?
   status    ProofStatus @default(UNSPENT)
   createdAt DateTime    @default(now())

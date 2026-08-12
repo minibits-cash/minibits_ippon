@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { MeltQuoteState, CheckStateEnum, MintOperationError } from '@cashu/cashu-ts'
+import { Amount, MeltQuoteState, CheckStateEnum, MintOperationError } from '@cashu/cashu-ts'
 import { ProofStatus } from '@prisma/client'
+
+// NUT-02 v2 keyset ids are 33 bytes (66 hex chars) and are carried truncated inside cashuB tokens.
+const KEYSET_V2_ID = '01' + 'ab'.repeat(32)
 
 // ── hoisted mock fns ──────────────────────────────────────────────────────────
 
@@ -15,10 +18,17 @@ const mocks = vi.hoisted(() => ({
     walletCreateMeltQuoteBolt11: vi.fn(),
     walletCheckMeltQuoteBolt11: vi.fn(),
     walletMeltProofsBolt11: vi.fn(),
+    walletBindKeyset: vi.fn(),
+    getAllKeysetIds: vi.fn(),
+    getCheapestKeyset: vi.fn(),
+    getKeyset: vi.fn(),
+    getDecodedToken: vi.fn(),
+    getTokenMetadata: vi.fn(),
     prismaProofAggregate: vi.fn(),
     prismaProofFindMany: vi.fn(),
     prismaProofCreate: vi.fn(),
     prismaProofUpdateMany: vi.fn(),
+    WalletCtor: vi.fn(),
 }))
 
 // ── mocks ─────────────────────────────────────────────────────────────────────
@@ -31,18 +41,9 @@ vi.mock('@cashu/cashu-ts', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@cashu/cashu-ts')>()
     return {
         ...actual,
-        Wallet: vi.fn().mockImplementation(() => ({
-            loadMint: mocks.walletLoadMint,
-            send: mocks.walletSend,
-            receive: mocks.walletReceive,
-            checkProofsStates: mocks.walletCheckProofsStates,
-            createMintQuoteBolt11: mocks.walletCreateMintQuoteBolt11,
-            checkMintQuoteBolt11: mocks.walletCheckMintQuoteBolt11,
-            mintProofsBolt11: mocks.walletMintProofsBolt11,
-            createMeltQuoteBolt11: mocks.walletCreateMeltQuoteBolt11,
-            checkMeltQuoteBolt11: mocks.walletCheckMeltQuoteBolt11,
-            meltProofsBolt11: mocks.walletMeltProofsBolt11,
-        })),
+        getDecodedToken: mocks.getDecodedToken,
+        getTokenMetadata: mocks.getTokenMetadata,
+        Wallet: mocks.WalletCtor,
     }
 })
 
@@ -64,14 +65,46 @@ import { WalletService } from '../services/walletService'
 
 // ── fixtures ───────────────────────────────────────────────────────────────────
 
+// Proofs as cashu-ts v4 returns them: amounts are Amount value objects, not numbers.
 const makeProof = (secret: string, amount = 100) => ({
-    id: `id-${secret}`, amount, secret, C: `C-${secret}`,
+    id: KEYSET_V2_ID, amount: Amount.from(amount), secret, C: `C-${secret}`,
 })
 
+// Proofs as they come back from Prisma: amounts are plain integers.
 const makeDbProof = (secret: string, amount = 100) => ({
-    id: 1, walletId: 1, proofId: `id-${secret}`, amount, secret,
-    C: `C-${secret}`, dleq: null, witness: null, status: ProofStatus.UNSPENT,
+    id: 1, walletId: 1, proofId: KEYSET_V2_ID, amount, secret,
+    C: `C-${secret}`, dleq: null, p2pkE: null, witness: null, status: ProofStatus.UNSPENT,
     createdAt: new Date(),
+})
+
+// Reset every mock and restore the defaults that getWallet needs to consider its cached
+// keyset healthy. Nested suites layer their own fixtures on top of this.
+beforeEach(() => {
+    vi.resetAllMocks()
+
+    mocks.WalletCtor.mockImplementation(() => ({
+        loadMint: mocks.walletLoadMint,
+        send: mocks.walletSend,
+        receive: mocks.walletReceive,
+        checkProofsStates: mocks.walletCheckProofsStates,
+        createMintQuoteBolt11: mocks.walletCreateMintQuoteBolt11,
+        checkMintQuoteBolt11: mocks.walletCheckMintQuoteBolt11,
+        mintProofsBolt11: mocks.walletMintProofsBolt11,
+        createMeltQuoteBolt11: mocks.walletCreateMeltQuoteBolt11,
+        checkMeltQuoteBolt11: mocks.walletCheckMeltQuoteBolt11,
+        meltProofsBolt11: mocks.walletMeltProofsBolt11,
+        getKeyset: mocks.getKeyset,
+        bindKeyset: mocks.walletBindKeyset,
+        keyChain: {
+            getAllKeysetIds: mocks.getAllKeysetIds,
+            getCheapestKeyset: mocks.getCheapestKeyset,
+        },
+    }))
+
+    mocks.walletLoadMint.mockResolvedValue(undefined)
+    mocks.getKeyset.mockReturnValue({ id: KEYSET_V2_ID, isActive: true, expiry: undefined })
+    mocks.getAllKeysetIds.mockReturnValue([KEYSET_V2_ID])
+    mocks.getCheapestKeyset.mockReturnValue({ id: KEYSET_V2_ID })
 })
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -88,8 +121,6 @@ describe('WalletService.getProofsAmount', () => {
 })
 
 describe('WalletService.getWalletBalance', () => {
-    beforeEach(() => vi.clearAllMocks())
-
     it('returns unspent and pending balance', async () => {
         mocks.prismaProofAggregate
             .mockResolvedValueOnce({ _sum: { amount: 5000 } })
@@ -112,11 +143,6 @@ describe('WalletService.getWalletBalance', () => {
 })
 
 describe('WalletService.syncProofsStateWithMint', () => {
-    beforeEach(() => {
-        vi.clearAllMocks()
-        mocks.walletLoadMint.mockResolvedValue(undefined)
-    })
-
     it('returns zeros when no pending proofs exist', async () => {
         mocks.prismaProofFindMany.mockResolvedValue([])
         const result = await WalletService.syncProofsStateWithMint(1, 'https://testmint.example.com')
@@ -184,11 +210,6 @@ describe('WalletService.syncProofsStateWithMint', () => {
 describe('WalletService.sendProofs', () => {
     const WALLET_ID = 1
 
-    beforeEach(() => {
-        vi.clearAllMocks()
-        mocks.walletLoadMint.mockResolvedValue(undefined)
-    })
-
     it('throws VALIDATION_ERROR when balance insufficient', async () => {
         mocks.prismaProofFindMany.mockResolvedValue([makeDbProof('s1', 50)])
 
@@ -231,19 +252,131 @@ describe('WalletService.sendProofs', () => {
             100, expect.any(Array), { includeFees: true }, undefined,
         )
     })
+
+    it('sends proofs whose keyset id is a NUT-02 v2 id', async () => {
+        mocks.prismaProofFindMany.mockResolvedValue([makeDbProof('s1', 200)])
+        mocks.walletSend.mockResolvedValue({
+            keep: [makeProof('k1', 100)],
+            send: [makeProof('send1', 100)],
+        })
+        mocks.prismaProofCreate.mockResolvedValue({})
+        mocks.prismaProofUpdateMany.mockResolvedValue({})
+
+        await WalletService.sendProofs(WALLET_ID, 100, 'https://testmint.example.com')
+
+        // Proofs loaded from the DB must reach cashu-ts with their full 66-char keyset id.
+        const [, sentProofs] = mocks.walletSend.mock.calls[0]
+        expect(sentProofs[0].id).toBe(KEYSET_V2_ID)
+        expect(sentProofs[0].amount).toBeInstanceOf(Amount)
+
+        // ...and new proofs must be persisted with it intact.
+        expect(mocks.prismaProofCreate).toHaveBeenCalledWith(
+            expect.objectContaining({ data: expect.objectContaining({ proofId: KEYSET_V2_ID }) })
+        )
+    })
+})
+
+describe('WalletService.decodeToken — NUT-02 v2 keyset resolution', () => {
+    const MINT = 'https://testmint.example.com'
+    const TOKEN = 'cashuBtest'
+
+    beforeEach(() => {
+        mocks.getTokenMetadata.mockReturnValue({ mint: MINT, unit: 'sat', amount: Amount.from(100), incompleteProofs: [] })
+    })
+
+    it('passes the mint keyset ids so short v2 ids can be expanded', async () => {
+        mocks.getDecodedToken.mockReturnValue({ mint: MINT, unit: 'sat', proofs: [makeProof('a')] })
+
+        await WalletService.decodeToken(TOKEN)
+
+        expect(mocks.getDecodedToken).toHaveBeenCalledWith(TOKEN, [KEYSET_V2_ID])
+    })
+
+    it('refreshes keysets and retries when a short id maps to no known keyset', async () => {
+        const rotatedId = '01' + 'cd'.repeat(32)
+        mocks.getDecodedToken
+            .mockImplementationOnce(() => { throw new Error("Couldn't map short keyset ID 01cd to any known keysets") })
+            .mockReturnValueOnce({ mint: MINT, unit: 'sat', proofs: [makeProof('a')] })
+        mocks.getAllKeysetIds
+            .mockReturnValueOnce([KEYSET_V2_ID])
+            .mockReturnValue([KEYSET_V2_ID, rotatedId])
+
+        const token = await WalletService.decodeToken(TOKEN)
+
+        expect(token.mint).toBe(MINT)
+        expect(mocks.walletLoadMint).toHaveBeenCalledWith(true)
+        expect(mocks.getDecodedToken).toHaveBeenNthCalledWith(2, TOKEN, [KEYSET_V2_ID, rotatedId])
+    })
+})
+
+describe('WalletService.receiveToken', () => {
+    const MINT = 'https://testmint.example.com'
+
+    it('rejects a token from a different mint before touching its keysets', async () => {
+        mocks.getTokenMetadata.mockReturnValue({
+            mint: 'https://othermint.example.com', unit: 'sat', amount: Amount.from(100), incompleteProofs: [],
+        })
+
+        await expect(WalletService.receiveToken(1, 'cashuBtest', MINT))
+            .rejects.toMatchObject({ name: 'VALIDATION_ERROR' })
+
+        expect(mocks.getDecodedToken).not.toHaveBeenCalled()
+    })
+
+    it('receives the decoded token so expanded keyset ids are used for the swap', async () => {
+        const decoded = { mint: MINT, unit: 'sat', proofs: [makeProof('a')] }
+        mocks.getTokenMetadata.mockReturnValue({ mint: MINT, unit: 'sat', amount: Amount.from(100), incompleteProofs: [] })
+        mocks.getDecodedToken.mockReturnValue(decoded)
+        mocks.walletReceive.mockResolvedValue([makeProof('new1')])
+        mocks.prismaProofCreate.mockResolvedValue({})
+
+        await WalletService.receiveToken(1, 'cashuBtest', MINT)
+
+        expect(mocks.walletReceive).toHaveBeenCalledWith(decoded)
+    })
+
+    // A v1 (`00`-prefixed) keyset id decodes without consulting the keychain, so a token from a
+    // keyset the mint rotated to gets all the way to the swap before anything notices.
+    it('refreshes keysets when the token uses a keyset the wallet has not loaded', async () => {
+        const rotatedId = '00' + 'ef'.repeat(7)
+        const rotatedProof = { ...makeProof('a'), id: rotatedId }
+        mocks.getTokenMetadata.mockReturnValue({ mint: MINT, unit: 'sat', amount: Amount.from(100), incompleteProofs: [] })
+        mocks.getDecodedToken.mockReturnValue({ mint: MINT, unit: 'sat', proofs: [rotatedProof] })
+        mocks.getAllKeysetIds
+            .mockReturnValueOnce([KEYSET_V2_ID])           // decodeToken: rotated keyset still unknown
+            .mockReturnValueOnce([KEYSET_V2_ID])           // ensureKeysetsKnown: detects it
+            .mockReturnValue([KEYSET_V2_ID, rotatedId])    // after the refresh
+        mocks.walletReceive.mockResolvedValue([makeProof('new1')])
+        mocks.prismaProofCreate.mockResolvedValue({})
+
+        await WalletService.receiveToken(1, 'cashuBtest', MINT)
+
+        expect(mocks.walletLoadMint).toHaveBeenCalledWith(true)
+        expect(mocks.walletReceive).toHaveBeenCalled()
+    })
+
+    it('fails cleanly when the keyset is still unknown after a refresh', async () => {
+        const bogusProof = { ...makeProof('a'), id: '00' + 'ff'.repeat(7) }
+        mocks.getTokenMetadata.mockReturnValue({ mint: MINT, unit: 'sat', amount: Amount.from(100), incompleteProofs: [] })
+        mocks.getDecodedToken.mockReturnValue({ mint: MINT, unit: 'sat', proofs: [bogusProof] })
+        mocks.getAllKeysetIds.mockReturnValue([KEYSET_V2_ID])
+
+        await expect(WalletService.receiveToken(1, 'cashuBtest', MINT))
+            .rejects.toMatchObject({ statusCode: 400, name: 'VALIDATION_ERROR' })
+
+        expect(mocks.walletReceive).not.toHaveBeenCalled()
+    })
 })
 
 describe('WalletService.meltProofs — error handling', () => {
     const WALLET_ID = 1
     const MELT_QUOTE = {
-        quote: 'mq1', amount: 500, fee_reserve: 10,
+        quote: 'mq1', amount: Amount.from(500), fee_reserve: Amount.from(10),
         state: MeltQuoteState.UNPAID, expiry: 3600,
         unit: 'sat', request: 'lnbc...', payment_preimage: null,
     }
 
     beforeEach(() => {
-        vi.resetAllMocks()
-        mocks.walletLoadMint.mockResolvedValue(undefined)
         mocks.prismaProofFindMany.mockResolvedValue([makeDbProof('s1', 1000)])
         mocks.walletSend.mockResolvedValue({
             keep: [makeProof('k1', 490)],

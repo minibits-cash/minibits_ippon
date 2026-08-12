@@ -1,8 +1,12 @@
 import {
     Wallet,
+    Amount,
+    AmountLike,
     MintQuoteBolt11Response,
     MeltQuoteBolt11Response,
+    MeltProofsResponse,
     Proof,
+    ProofLike,
     Token,
     ProofState,
     MeltQuoteState,
@@ -10,22 +14,85 @@ import {
     MintOperationError,
     OutputConfig,
     getDecodedToken,
+    getTokenMetadata,
 } from '@cashu/cashu-ts'
 import { ProofStatus } from '@prisma/client'
 import prisma from '../utils/prismaClient'
 import AppError, { Err } from '../utils/AppError'
 import { log } from './logService'
 
-const _wallets = new Map<string, Wallet>()
+type CachedWallet = {
+    wallet: Wallet
+    keysetsLoadedAt: number
+}
+
+const _wallets = new Map<string, CachedWallet>()
+
+// Keysets are re-fetched at least this often. NUT-02 v2 keysets carry a final_expiry and mints
+// rotate them, so a long-lived process must not pin the keyset it saw at startup.
+const KEYSET_TTL_MS = Number(process.env.KEYSET_TTL_MS || 10 * 60 * 1000)
 
 const getMintUrls = function (): string[] {
     const raw = process.env.MINT_URLS || ''
     return raw.split(',').map(u => u.trim()).filter(u => u.length > 0)
 }
 
+
+const toNumber = function (amount: AmountLike): number {
+    return Amount.from(amount).toNumber()
+}
+
+
+/**
+ * True when the wallet's bound keyset can still be used to create new outputs. A keyset that the
+ * mint deactivated or that passed its final_expiry (NUT-02 v2) will have its outputs rejected.
+ */
+const isBoundKeysetUsable = function (wallet: Wallet): boolean {
+    try {
+        const keyset = wallet.getKeyset()
+        const expiry = keyset.expiry
+        return keyset.isActive && (expiry === undefined || expiry * 1000 > Date.now())
+    } catch {
+        return false
+    }
+}
+
+
+/**
+ * Re-fetch keysets and keys from the mint and rebind to the cheapest active keyset. loadMint keeps
+ * an existing binding, so rebinding has to be explicit once the old keyset goes inactive.
+ */
+const refreshKeysets = async function (cached: CachedWallet, mintUrl: string): Promise<void> {
+    await cached.wallet.loadMint(true)
+    cached.keysetsLoadedAt = Date.now()
+
+    if (!isBoundKeysetUsable(cached.wallet)) {
+        const cheapest = cached.wallet.keyChain.getCheapestKeyset()
+        cached.wallet.bindKeyset(cheapest.id)
+        log.info('[refreshKeysets] Rebound wallet to a new keyset', { mintUrl, keysetId: cheapest.id })
+    }
+}
+
+
 const getWallet = async function (mintUrl: string): Promise<Wallet> {
-    if (_wallets.has(mintUrl)) {
-        return _wallets.get(mintUrl)!
+    const cached = _wallets.get(mintUrl)
+
+    if (cached) {
+        const isStale = Date.now() - cached.keysetsLoadedAt > KEYSET_TTL_MS
+
+        if (isStale || !isBoundKeysetUsable(cached.wallet)) {
+            try {
+                await refreshKeysets(cached, mintUrl)
+            } catch (e: any) {
+                // A refresh failure is not fatal while the bound keyset is still usable.
+                log.warn('[getWallet] Keyset refresh failed, keeping cached keysets', { mintUrl, error: e.message })
+                if (!isBoundKeysetUsable(cached.wallet)) {
+                    throw new AppError(500, Err.CONNECTION_ERROR, `Mint has no usable keyset: ${e.message}`, { caller: 'getWallet' })
+                }
+            }
+        }
+
+        return cached.wallet
     }
 
     const unit = process.env.UNIT || 'sat'
@@ -34,23 +101,96 @@ const getWallet = async function (mintUrl: string): Promise<Wallet> {
 
     const cashuWallet = new Wallet(mintUrl, { unit })
     await cashuWallet.loadMint()
-    _wallets.set(mintUrl, cashuWallet)
+    _wallets.set(mintUrl, { wallet: cashuWallet, keysetsLoadedAt: Date.now() })
 
     return cashuWallet
 }
 
 
-const getProofsAmount = function (proofs: Array<Proof>): number {
-    let totalAmount = 0
-    for (const proof of proofs) {
-        totalAmount += proof.amount
-    }
-    return totalAmount
+const getProofsAmount = function (proofs: Array<Pick<ProofLike, 'amount'>>): number {
+    return Amount.sum(proofs.map(p => p.amount)).toNumber()
 }
 
+
 const getTokenAmount = function (tokenStr: string): number {
-    const decoded = getDecodedToken(tokenStr)
-    return getProofsAmount(decoded.proofs)
+    // getTokenMetadata does not resolve keyset ids, so it works for any mint without a round trip.
+    return getTokenMetadata(tokenStr).amount.toNumber()
+}
+
+
+/**
+ * Decode a token, resolving NUT-02 v2 short keyset ids against the issuing mint's keysets.
+ *
+ * A cashuB token carries v2 keyset ids truncated, so getDecodedToken needs the mint's full keyset
+ * id list to expand them. Tokens that only use v1 (`00`-prefixed) ids decode without that list,
+ * which is why an unreachable mint is a warning rather than an error here.
+ */
+const decodeToken = async function (tokenStr: string): Promise<Token> {
+    const { mint } = getTokenMetadata(tokenStr)
+
+    let cached: CachedWallet | undefined
+    let keysetIds: string[] = []
+
+    try {
+        await getWallet(mint)
+        cached = _wallets.get(mint)
+        keysetIds = cached?.wallet.keyChain.getAllKeysetIds() ?? []
+    } catch (e: any) {
+        log.warn('[decodeToken] Could not load mint keysets, decoding without them', { mint, error: e.message })
+    }
+
+    try {
+        return getDecodedToken(tokenStr, keysetIds)
+    } catch (e: any) {
+        // The token may reference a keyset the mint added after we last loaded it.
+        if (!cached) {
+            throw e
+        }
+
+        log.debug('[decodeToken] Decode failed, refreshing keysets and retrying', { mint, error: e.message })
+        await refreshKeysets(cached, mint)
+        return getDecodedToken(tokenStr, cached.wallet.keyChain.getAllKeysetIds())
+    }
+}
+
+
+/**
+ * Make sure the wallet knows the keyset behind every proof it is about to swap.
+ *
+ * The mint may have rotated keysets since we last loaded them. cashu-ts rejects a swap whose
+ * inputs reference a keyset missing from the keychain, and a successful decode is not proof that
+ * the keyset is known: only v2 short ids are resolved against the keychain, so a token from a
+ * freshly rotated v1 (`00`-prefixed) keyset decodes cleanly and then fails at the swap. Checking
+ * the ids directly covers both id versions.
+ */
+const ensureKeysetsKnown = async function (mintUrl: string, proofs: Array<Pick<ProofLike, 'id'>>): Promise<void> {
+    const cached = _wallets.get(mintUrl)
+    if (!cached) {
+        return
+    }
+
+    const missing = () => {
+        const known = new Set(cached.wallet.keyChain.getAllKeysetIds())
+        return [...new Set(proofs.map(p => p.id).filter(id => !known.has(id)))]
+    }
+
+    const unknownIds = missing()
+    if (unknownIds.length === 0) {
+        return
+    }
+
+    log.info('[ensureKeysetsKnown] Token references unknown keysets, refreshing from mint', { mintUrl, keysetIds: unknownIds })
+
+    try {
+        await refreshKeysets(cached, mintUrl)
+    } catch (e: any) {
+        throw new AppError(500, Err.CONNECTION_ERROR, `Could not refresh keysets from mint: ${e.message}`, { caller: 'ensureKeysetsKnown' })
+    }
+
+    const stillUnknown = missing()
+    if (stillUnknown.length > 0) {
+        throw new AppError(400, Err.VALIDATION_ERROR, `Token references keysets that mint ${mintUrl} does not know: ${stillUnknown.join(', ')}`, { caller: 'ensureKeysetsKnown' })
+    }
 }
 
 
@@ -72,16 +212,17 @@ const getWalletBalance = async function (walletId: number): Promise<{ balance: n
 }
 
 
-const saveProofs = async function (walletId: number, proofs: Proof[], status: ProofStatus = ProofStatus.UNSPENT) {
+const saveProofs = async function (walletId: number, proofs: ProofLike[], status: ProofStatus = ProofStatus.UNSPENT) {
     for (const proof of proofs) {
         await prisma.proof.create({
             data: {
                 walletId,
                 proofId: proof.id,
-                amount: proof.amount,
+                amount: toNumber(proof.amount),
                 secret: proof.secret,
                 C: proof.C,
                 dleq: proof.dleq ? JSON.stringify(proof.dleq) : null,
+                p2pkE: proof.p2pk_e ?? null,
                 witness: proof.witness ? (typeof proof.witness === 'string' ? proof.witness : JSON.stringify(proof.witness)) : null,
                 status,
             },
@@ -102,10 +243,11 @@ const loadProofs = async function (walletId: number, status?: ProofStatus): Prom
 
     return dbProofs.map(p => ({
         id: p.proofId,
-        amount: p.amount,
+        amount: Amount.from(p.amount),
         secret: p.secret,
         C: p.C,
         dleq: p.dleq ? JSON.parse(p.dleq) : undefined,
+        p2pk_e: p.p2pkE ?? undefined,
         witness: p.witness ?? undefined,
     }))
 }
@@ -122,11 +264,11 @@ const updateProofsStatus = async function (walletId: number, secrets: string[], 
 }
 
 
-const createMintQuote = async function (amount: number, mintUrl: string): Promise<MintQuoteBolt11Response> {
+const createMintQuote = async function (amount: AmountLike, mintUrl: string): Promise<MintQuoteBolt11Response> {
     try {
         const wallet = await getWallet(mintUrl)
         const quote = await wallet.createMintQuoteBolt11(amount)
-        log.debug('[createMintQuote]', { quote: quote.quote, amount })
+        log.debug('[createMintQuote]', { quote: quote.quote, amount: String(amount) })
         return quote
     } catch (e: any) {
         throw new AppError(500, Err.CONNECTION_ERROR, e.message, { caller: 'createMintQuote' })
@@ -144,7 +286,7 @@ const checkMintQuote = async function (quoteId: string, mintUrl: string): Promis
 }
 
 
-const mintProofs = async function (amount: number, quoteId: string, mintUrl: string): Promise<Proof[]> {
+const mintProofs = async function (amount: AmountLike, quoteId: string, mintUrl: string): Promise<Proof[]> {
     try {
         const wallet = await getWallet(mintUrl)
         return await wallet.mintProofsBolt11(amount, quoteId)
@@ -208,14 +350,22 @@ const sendProofs = async function (walletId: number, amount: number, mintUrl: st
 const SWAP_BATCH_SIZE = 100
 
 const receiveToken = async function (walletId: number, tokenStr: string, mintUrl: string): Promise<Proof[]> {
-    const decoded = getDecodedToken(tokenStr)
-    if (decoded.mint !== mintUrl) {
-        throw new AppError(400, Err.VALIDATION_ERROR, `Token mint '${decoded.mint}' does not match wallet mint '${mintUrl}'`, { caller: 'receiveToken' })
+    // Read the mint off the token metadata first — decoding proofs needs the mint's keysets to
+    // resolve NUT-02 v2 short keyset ids, and we must not fetch those from an unexpected mint.
+    const { mint: tokenMint } = getTokenMetadata(tokenStr)
+    if (tokenMint !== mintUrl) {
+        throw new AppError(400, Err.VALIDATION_ERROR, `Token mint '${tokenMint}' does not match wallet mint '${mintUrl}'`, { caller: 'receiveToken' })
     }
+
     const wallet = await getWallet(mintUrl)
+    const decoded = await decodeToken(tokenStr)
+
+    // The token may come from a keyset the mint rotated to after we last loaded it.
+    await ensureKeysetsKnown(mintUrl, decoded.proofs)
 
     if (decoded.proofs.length <= SWAP_BATCH_SIZE) {
-        const newProofs = await wallet.receive(tokenStr)
+        // Pass the decoded token so the swap uses the already-expanded keyset ids.
+        const newProofs = await wallet.receive(decoded)
         await saveProofs(walletId, newProofs, ProofStatus.UNSPENT)
         return newProofs
     }
@@ -231,9 +381,10 @@ const receiveToken = async function (walletId: number, tokenStr: string, mintUrl
         const preview = await wallet.prepareSwapToReceive(batchToken)
         const { keep } = await wallet.completeSwap(preview)
         allNewProofs.push(...keep)
+        // Persist per batch so a mid-loop failure does not lose already-swapped proofs.
+        await saveProofs(walletId, keep, ProofStatus.UNSPENT)
     }
 
-    await saveProofs(walletId, allNewProofs, ProofStatus.UNSPENT)
     return allNewProofs
 }
 
@@ -262,15 +413,15 @@ const meltProofs = async function (
     walletId: number,
     meltQuote: MeltQuoteBolt11Response,
     mintUrl: string,
-): Promise<{ quote: MeltQuoteBolt11Response, change: Proof[] }> {
+): Promise<MeltProofsResponse<MeltQuoteBolt11Response>> {
     const wallet = await getWallet(mintUrl)
 
-    const amountNeeded = meltQuote.amount + meltQuote.fee_reserve
+    const amountNeeded = Amount.from(meltQuote.amount).add(meltQuote.fee_reserve)
     const proofs = await loadProofs(walletId)
     const totalBalance = getProofsAmount(proofs)
 
-    if (totalBalance < amountNeeded) {
-        throw new AppError(400, Err.VALIDATION_ERROR, `Insufficient balance for melt: ${totalBalance} < ${amountNeeded}`, { caller: 'meltProofs' })
+    if (amountNeeded.greaterThan(totalBalance)) {
+        throw new AppError(400, Err.VALIDATION_ERROR, `Insufficient balance for melt: ${totalBalance} < ${amountNeeded.toString()}`, { caller: 'meltProofs' })
     }
 
     // Select proofs for melt
@@ -327,7 +478,7 @@ const meltProofs = async function (
             if (quoteCheck.state === MeltQuoteState.PAID) {
                 // Payment went through despite the error
                 await updateProofsStatus(walletId, sendSecrets, ProofStatus.SPENT)
-                return { quote: quoteCheck, change: [] }
+                return { quote: quoteCheck, change: [], outputData: [] }
             } else if (quoteCheck.state === MeltQuoteState.PENDING) {
                 // Payment still in flight, leave proofs as PENDING
                 throw new AppError(202, Err.TIMEOUT_ERROR, `Lightning payment is pending, proofs remain reserved. Check quote ${meltQuote.quote} later.`, { caller: 'meltProofs' })
@@ -367,6 +518,7 @@ const syncProofsStateWithMint = async function (walletId: number, mintUrl: strin
         return { spent: 0, pending: 0, unspent: 0 }
     }
 
+    // Proofs carry their keyset id, which NUT-07 needs to pick the hash-to-curve variant.
     const mintStates = await wallet.checkProofsStates(pendingProofs)
     const spentSecrets: string[] = []
     const unspentSecrets: string[] = []
@@ -405,7 +557,7 @@ const syncProofsStateWithMint = async function (walletId: number, mintUrl: strin
 
 
 const checkTokenState = async function (tokenStr: string): Promise<{ proofStates: ProofState[], token: Token }> {
-    const token = getDecodedToken(tokenStr)
+    const token = await decodeToken(tokenStr)
     const wallet = await getWallet(token.mint)
     const proofStates = await wallet.checkProofsStates(token.proofs)
     return { proofStates, token }
@@ -417,6 +569,7 @@ export const WalletService = {
     getWallet,
     getProofsAmount,
     getTokenAmount,
+    decodeToken,
     getWalletBalance,
     saveProofs,
     loadProofs,

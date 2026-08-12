@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
-import { MintQuoteState, MeltQuoteState } from '@cashu/cashu-ts'
+import { Amount, MintQuoteState, MeltQuoteState } from '@cashu/cashu-ts'
 
 // ── hoisted mock fns ──────────────────────────────────────────────────────────
 
@@ -75,7 +75,7 @@ vi.mock('@cashu/cashu-ts', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@cashu/cashu-ts')>()
     return {
         ...actual,
-        getEncodedTokenV4: vi.fn().mockReturnValue('cashuBmocked_token'),
+        getEncodedToken: vi.fn().mockReturnValue('cashuBmocked_token'),
     }
 })
 
@@ -236,12 +236,13 @@ describe('GET /v1/wallet/deposit/:quote', () => {
 
     it('mints proofs automatically when quote is paid', async () => {
         mocks.checkMintQuote.mockResolvedValue({
-            quote: 'q1', request: 'lnbc...', state: MintQuoteState.PAID, amount: 1000, expiry: 3600,
+            quote: 'q1', request: 'lnbc...', state: MintQuoteState.PAID, amount: Amount.from(1000), expiry: 3600,
         })
         mocks.mintProofs.mockResolvedValue([{ id: 'p1', amount: 1000, secret: 's1', C: 'C1' }])
         const res = await get(app, '/v1/wallet/deposit/q1')
         expect(res.statusCode).toBe(200)
-        expect(mocks.mintProofs).toHaveBeenCalledWith(1000, 'q1', WALLET.mint)
+        // The quote amount is forwarded as the Amount value object cashu-ts v4 hands back.
+        expect(mocks.mintProofs).toHaveBeenCalledWith(Amount.from(1000), 'q1', WALLET.mint)
         expect(mocks.saveProofs).toHaveBeenCalled()
     })
 })
@@ -327,12 +328,12 @@ describe('POST /v1/wallet/pay', () => {
         vi.clearAllMocks()
         mocks.prismaWalletFindUnique.mockResolvedValue(WALLET)
         mocks.createMeltQuote.mockResolvedValue({
-            quote: 'melt-q1', amount: 1000, fee_reserve: 10,
+            quote: 'melt-q1', amount: Amount.from(1000), fee_reserve: Amount.from(10),
             state: MeltQuoteState.UNPAID, expiry: 3600,
         })
         mocks.meltProofs.mockResolvedValue({
             quote: {
-                quote: 'melt-q1', amount: 1000, fee_reserve: 10,
+                quote: 'melt-q1', amount: Amount.from(1000), fee_reserve: Amount.from(10),
                 state: MeltQuoteState.PAID, payment_preimage: 'preimage', expiry: 3600,
             },
             change: [],
@@ -399,7 +400,7 @@ describe('GET /v1/wallet/pay/:quote', () => {
         vi.clearAllMocks()
         mocks.prismaWalletFindUnique.mockResolvedValue(WALLET)
         mocks.checkMeltQuote.mockResolvedValue({
-            quote: 'melt-q1', amount: 1000, fee_reserve: 10,
+            quote: 'melt-q1', amount: Amount.from(1000), fee_reserve: Amount.from(10),
             state: MeltQuoteState.PAID, payment_preimage: 'pi', expiry: 3600,
         })
         app = await buildApp()

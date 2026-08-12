@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     prismaProofDeleteMany: vi.fn(),
     receiveToken: vi.fn(),
     getProofsAmount: vi.fn(),
+    getTokenAmount: vi.fn(),
 }))
 
 // ── mocks ───────────────────────────────────────────────────────────────────
@@ -34,6 +35,7 @@ vi.mock('../services/walletService', () => ({
         getMintUrls: vi.fn().mockReturnValue(['https://testmint.example.com']),
         receiveToken: mocks.receiveToken,
         getProofsAmount: mocks.getProofsAmount,
+        getTokenAmount: mocks.getTokenAmount,
         getWalletBalance: vi.fn().mockResolvedValue({ balance: 0, pendingBalance: 0 }),
         sendProofs: vi.fn(),
         saveProofs: vi.fn(),
@@ -123,6 +125,7 @@ describe('POST /v1/wallet', () => {
         const mockProofs = [{ id: 'p1', amount: 100, secret: 'sec1', C: 'C1' }]
         mocks.receiveToken.mockResolvedValue(mockProofs)
         mocks.getProofsAmount.mockReturnValue(100)
+        mocks.getTokenAmount.mockReturnValue(100)
 
         const res = await app.inject({
             method: 'POST',
@@ -141,6 +144,7 @@ describe('POST /v1/wallet', () => {
         const bigProofs = [{ id: 'p1', amount: 999999, secret: 'sec1', C: 'C1' }]
         mocks.receiveToken.mockResolvedValue(bigProofs)
         mocks.getProofsAmount.mockReturnValue(999999)
+        mocks.getTokenAmount.mockReturnValue(999999)
 
         const res = await app.inject({
             method: 'POST',
@@ -157,6 +161,7 @@ describe('POST /v1/wallet', () => {
 
     it('cleans up wallet if token receive fails', async () => {
         mocks.receiveToken.mockRejectedValue(new Error('invalid token'))
+        mocks.getTokenAmount.mockReturnValue(100)
 
         const res = await app.inject({
             method: 'POST',
